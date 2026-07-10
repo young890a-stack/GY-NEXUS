@@ -10,17 +10,56 @@ export default function NewProductPage() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [price, setPrice] = useState("");
   const [affiliateUrl, setAffiliateUrl] = useState("");
   const [platform, setPlatform] = useState("coupang");
+  
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState("");
+
   const [loading, setLoading] = useState(false);
+
+  const handleImageChange = (
+  e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+  if (!e.target.files?.length) return;
+
+  setImageFile(e.target.files[0]);
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
 
+   let uploadedImageUrl = "";
+
+  if (imageFile) {
+  const fileName = `${Date.now()}-${imageFile.name}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("products")
+    .upload(fileName, imageFile);
+
+   if (uploadError) {
+   console.error(uploadError);
+   alert(uploadError.message);
+
+   setLoading(false);
+   return;
+   }
+
+  const { data } = supabase.storage
+    .from("products")
+    .getPublicUrl(fileName);
+
+  uploadedImageUrl = data.publicUrl;
+  }
+   
     const { error } = await supabase.from("products").insert({
       title,
       description,
+      price_text: price,
+      image_url: uploadedImageUrl,
       affiliate_url: affiliateUrl,
       platform,
     });
@@ -80,7 +119,26 @@ export default function NewProductPage() {
               style={{ ...inputStyle, height: "120px" }}
               placeholder="상품 장점과 추천 이유를 입력하세요."
             />
-          </label>
+         </label>
+
+           <label>가격</label>
+            <input
+            type="text"
+            placeholder="예: 19900원"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            style={inputStyle}
+            />
+          
+            <label>
+             상품 이미지
+            <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageChange}
+            style={inputStyle}
+           />
+           </label>
 
           <label>
             제휴 링크
