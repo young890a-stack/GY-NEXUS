@@ -2,13 +2,19 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "GY Company OS", template: "%s | GY" },
-  description: "GY First Release Production 1.0 — One Human. One AI Company.",
-  applicationName: "GY Company OS",
+  title: { default: "GY — Create better. Grow with clarity.", template: "%s | GY" },
+  description: "GY는 상품 발굴, 콘텐츠 제작, 품질 검수, 게시와 성장 분석을 하나의 경험으로 연결하는 AI Content & Commerce Platform입니다.",
+  applicationName: "GY",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "GY Company OS", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: "GY", statusBarStyle: "black-translucent" },
 };
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#4f46e5" };
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#07111f",
+};
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="ko"><body>{children}</body></html>;
 }

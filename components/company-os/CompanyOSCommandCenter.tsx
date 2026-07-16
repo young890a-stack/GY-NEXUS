@@ -62,7 +62,7 @@ export default function CompanyOSCommandCenter() {
     }
   }
 
-  if (loading) return <section className="panel"><p>GY Company OS 상태를 점검하는 중입니다...</p></section>;
+  if (loading) return <section className="panel"><p>AI Company OS 상태를 점검하는 중입니다...</p></section>;
   if (!overview) return <section className="panel"><p>운영 현황을 불러오지 못했습니다.</p></section>;
 
   return (
@@ -91,7 +91,7 @@ export default function CompanyOSCommandCenter() {
 
       <section className="grid grid-2" style={{ alignItems: "start" }}>
         <article className="panel">
-          <div className="section-heading"><div><span className="eyebrow">COMPANY PIPELINE</span><h2>GY 운영 파이프라인</h2></div><Link className="button button-light" href="/admin/automation">자동화 열기</Link></div>
+          <div className="section-heading"><div><span className="eyebrow">COMPANY PIPELINE</span><h2>회사를 움직이는 5단계</h2></div><Link className="button button-light" href="/admin/automation">자동화 열기</Link></div>
           <div className="company-os-flow">
             {operatingFlow.map(([step, title, description, href]) => (
               <Link href={href} key={step} className="company-os-flow-item">
@@ -116,14 +116,14 @@ export default function CompanyOSCommandCenter() {
 
       <section className="grid grid-2" style={{ alignItems: "start" }}>
         <article className="panel">
-          <span className="eyebrow">TODAY&apos;S CONTROL LIST</span><h2>Owner 확인 항목</h2>
+          <span className="eyebrow">TODAY&apos;S CONTROL LIST</span><h2>대표 확인 항목</h2>
           <ol className="company-os-actions">{overview.nextActions.map((item) => <li key={item}>{item}</li>)}</ol>
           <div className="actions"><Link className="button button-primary" href="/admin/publishing">게시 대기열</Link><Link className="button button-light" href="/admin/growth">성과 분석</Link></div>
         </article>
 
         <article className="panel">
-          <div className="section-heading"><div><span className="eyebrow">DREAM Y OPERATING BRIEF</span><h2>운영 브리핑</h2></div><button className="button button-primary" disabled={briefLoading} onClick={() => void createBrief()}>{briefLoading ? "작성 중..." : "오늘 브리핑 생성"}</button></div>
-          {brief ? <pre className="company-os-brief">{brief}</pre> : <p>운영 상태와 작업 대기열을 바탕으로 오늘의 우선순위와 7일 목표를 정리합니다.</p>}
+          <div className="section-heading"><div><span className="eyebrow">DREAM Y CEO BRIEF</span><h2>대표 브리핑</h2></div><button className="button button-primary" disabled={briefLoading} onClick={() => void createBrief()}>{briefLoading ? "작성 중..." : "오늘 브리핑 생성"}</button></div>
+          {brief ? <pre className="company-os-brief">{brief}</pre> : <p>운영 상태와 작업 대기열을 바탕으로 오늘의 우선순위와 7일 목표를 만듭니다.</p>}
         </article>
       </section>
     </div>
