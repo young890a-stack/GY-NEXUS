@@ -1,0 +1,2 @@
+import YouTubeUploader from "@/components/youtube/YouTubeUploader";
+export default function YouTubePage(){return <div className="admin-page"><div className="admin-top"><div><span className="eyebrow">YOUTUBE PUBLISHER</span><h1>YouTube 실제 업로드</h1><p>완성된 쇼츠 MP4와 AI가 만든 제목·설명을 연결된 채널에 직접 업로드합니다. 처음에는 비공개 업로드를 권장합니다.</p></div></div><div className="notice">영상 생성 자체는 별도 영상 제작 도구가 필요합니다. 이 화면은 완성된 MP4를 Google 공식 YouTube Data API로 게시합니다.</div><YouTubeUploader/></div>}

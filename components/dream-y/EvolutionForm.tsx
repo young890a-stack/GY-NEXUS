@@ -1,0 +1,5 @@
+"use client";
+import { FormEvent,useState } from "react";
+export default function EvolutionForm(){const [title,setTitle]=useState("");const [cause,setCause]=useState("");const [lesson,setLesson]=useState("");const [nextAction,setNext]=useState("");const [msg,setMsg]=useState("");
+async function submit(e:FormEvent){e.preventDefault();const r=await fetch("/api/company/evolution",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title,cause,lesson,nextAction})});const d=await r.json();setMsg(d.success?"진화 기록 저장 완료. 다음 전략회의의 학습자료로 사용됩니다.":d.message||"저장 실패");}
+return <form className="dy-evolution-form" onSubmit={submit}><input placeholder="예: 쇼츠 조회수 하락" value={title} onChange={e=>setTitle(e.target.value)}/><textarea rows={3} placeholder="원인 분석" value={cause} onChange={e=>setCause(e.target.value)}/><textarea rows={3} placeholder="이번에 배운 점" value={lesson} onChange={e=>setLesson(e.target.value)}/><textarea rows={3} placeholder="다음 실행에서 바꿀 점" value={nextAction} onChange={e=>setNext(e.target.value)}/><button>Evolution Room에 기록</button>{msg&&<p>{msg}</p>}</form>}

@@ -1,0 +1,5 @@
+"use client";
+import { FormEvent, useState } from "react";
+export default function MemoryForm(){const [category,setCategory]=useState("brand");const [key,setKey]=useState("");const [value,setValue]=useState("");const [message,setMessage]=useState("");
+async function submit(e:FormEvent){e.preventDefault();setMessage("저장 중...");const r=await fetch("/api/company/memory",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({category,key,value})});const d=await r.json();setMessage(d.success?"저장 완료. 새로고침하면 모든 AI 직원이 공유합니다.":d.message||"저장 실패");if(d.success){setKey("");setValue("")}}
+return <form className="dy-memory-form" onSubmit={submit}><select value={category} onChange={e=>setCategory(e.target.value)}><option value="brand">브랜드</option><option value="audience">타깃</option><option value="content">콘텐츠</option><option value="policy">운영 원칙</option><option value="goal">목표</option></select><input placeholder="기억 이름" value={key} onChange={e=>setKey(e.target.value)}/><textarea rows={4} placeholder="AI 직원들이 기억할 내용" value={value} onChange={e=>setValue(e.target.value)}/><button>회사 기억 저장</button>{message&&<p>{message}</p>}</form>}

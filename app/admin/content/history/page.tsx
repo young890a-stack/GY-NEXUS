@@ -1,0 +1,7 @@
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+export const dynamic = "force-dynamic";
+type Item={id:string;product_title:string;content_type:"blog"|"shorts"|"package";title:string;created_at:string};
+const label=(t:Item["content_type"])=>t==="blog"?"📝 블로그":t==="shorts"?"🎬 15초 쇼츠":"✨ 전체 패키지";
+export default async function HistoryPage(){let items:Item[]=[];let error="";try{const s=await createClient();const r=await s.from("ai_contents").select("id,product_title,content_type,title,created_at").order("created_at",{ascending:false}).limit(100);if(r.error)throw r.error;items=(r.data??[]) as Item[]}catch(e){error=e instanceof Error?e.message:"생성 이력을 불러오지 못했습니다."}
+return <><div className="admin-top"><div><h1>AI 생성 이력</h1><p>저장된 블로그·쇼츠·패키지를 다시 확인하세요.</p></div><Link className="button button-primary" href="/admin/content">+ 새 콘텐츠 생성</Link></div>{error&&<div className="alert alert-warning" style={{marginBottom:20}}>{error}</div>}<div className="panel">{items.length?<div className="table-wrap"><table><thead><tr><th>유형</th><th>제목</th><th>상품</th><th>생성일</th><th></th></tr></thead><tbody>{items.map(i=><tr key={i.id}><td>{label(i.content_type)}</td><td><b>{i.title}</b></td><td>{i.product_title}</td><td>{new Date(i.created_at).toLocaleString("ko-KR")}</td><td><Link className="button button-light" href={`/admin/content/history/${i.id}`}>보기</Link></td></tr>)}</tbody></table></div>:<div className="empty">아직 저장된 콘텐츠가 없습니다.</div>}</div></>}

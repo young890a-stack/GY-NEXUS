@@ -1,40 +1,25 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 export default function DeleteProductButton({ id }: { id: string }) {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
 
   async function handleDelete() {
-    const ok = confirm("정말 이 상품을 삭제할까요?");
-
-    if (!ok) return;
-
-    const res = await fetch(`/api/products/${id}`, {
-      method: "DELETE",
-    });
-
-    if (res.ok) {
-      alert("삭제되었습니다.");
-      router.refresh();
-    } else {
-      alert("삭제에 실패했습니다.");
+    if (!window.confirm("정말 이 상품을 삭제할까요? 클릭 기록도 함께 삭제됩니다.")) return;
+    setLoading(true);
+    const response = await fetch(`/api/products/${id}`, { method: "DELETE" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      alert(data.message || data.error || "삭제에 실패했습니다.");
+      setLoading(false);
+      return;
     }
+    router.push("/admin/products");
+    router.refresh();
   }
 
-  return (
-    <button
-      onClick={handleDelete}
-      style={{
-        padding: "8px 12px",
-        border: "1px solid #ef4444",
-        borderRadius: "8px",
-        background: "white",
-        color: "#ef4444",
-        cursor: "pointer",
-      }}
-    >
-      삭제
-    </button>
-  );
+  return <button type="button" className="button button-danger" onClick={handleDelete} disabled={loading}>{loading ? "삭제 중..." : "상품 삭제"}</button>;
 }

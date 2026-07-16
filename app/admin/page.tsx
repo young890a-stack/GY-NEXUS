@@ -1,162 +1,173 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { hasOpenAIEnv, hasSupabaseEnv } from "@/lib/env";
+import { createClient } from "@/lib/supabase/server";
 
-export default async function AdminProductsPage() {
-  const supabase = createClient();
+export const dynamic = "force-dynamic";
 
-  const { data: products, error } = await supabase
-    .from("products")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    return <main style={{ padding: "40px" }}>상품을 불러오지 못했습니다.</main>;
-  }
-
-  return (
-    <main style={{ padding: "40px", background: "#f8fafc", minHeight: "100vh" }}>
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <h1 style={{ fontSize: "28px", marginBottom: "8px" }}>📦 상품 관리</h1>
-            <p style={{ color: "#666" }}>등록한 제휴상품을 관리하는 화면입니다.</p>
-          </div>
-
-          <Link href="/admin/products/new" style={buttonStyle}>
-            + 새 상품 등록
-          </Link>
-        </div>
-
-        <div style={gridStyle}>
-          {products?.map((product) => (
-            <div key={product.id} style={cardStyle}>
-              {product.image_url && (
-                <img
-                  src={product.image_url}
-                  alt={product.title}
-                  style={imageStyle}
-                />
-              )}
-
-              <div style={{ padding: "18px" }}>
-                <p style={badgeStyle}>{product.platform || "기타"}</p>
-                <h2 style={{ fontSize: "20px", marginBottom: "8px" }}>
-                  {product.title}
-                </h2>
-
-                <p style={{ color: "#555", minHeight: "44px" }}>
-                  {product.description}
-                </p>
-
-                {product.price_text && (
-                  <p style={{ fontSize: "18px", fontWeight: "bold", marginTop: "12px" }}>
-                    💰 {product.price_text}
-                  </p>
-                )}
-
-                <p style={{ color: "#2563eb", fontWeight: "bold", marginTop: "10px" }}>
-                  클릭 수: {product.clicks ?? 0}회
-                </p>
-
-                <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
-                  <Link href={`/admin/products/${product.id}/edit`} style={smallButtonStyle}>
-                    수정
-                  </Link>
-
-                  <Link href={`/go?id=${product.id}`} target="_blank" style={smallButtonStyle}>
-                    상품 링크 확인
-                  </Link>
-                  <button
-  onClick={async () => {
-    const res = await fetch("/api/ai/blog", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        title: product.title,
-        description: product.description,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!data.success) {
-      alert("AI 생성 실패");
-      return;
-    }
-
-    console.log(data.blog);
-
-    alert("AI 블로그가 생성되었습니다.");
-  }}
-  style={{
-    background: "#10b981",
-    color: "white",
-    border: "none",
-    padding: "10px 16px",
-    borderRadius: "8px",
-    cursor: "pointer",
-  }}
->
-🤖 AI 블로그 생성
-</button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </main>
-  );
+function hasEnv(name: string) {
+  const value = process.env[name]?.trim();
+  return Boolean(value && !value.includes("여기에") && !value.includes("your_"));
 }
 
-const gridStyle: React.CSSProperties = {
-  marginTop: "30px",
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-  gap: "20px",
-};
+export default async function AdminDashboard() {
+  const supabaseReady = hasSupabaseEnv();
+  const openAiReady = hasOpenAIEnv();
+  const geminiReady = hasEnv("GEMINI_API_KEY");
 
-const cardStyle: React.CSSProperties = {
-  background: "white",
-  border: "1px solid #e5e7eb",
-  borderRadius: "16px",
-  overflow: "hidden",
-  boxShadow: "0 8px 20px rgba(0,0,0,0.05)",
-};
+  const externalServices = [
+    ["OpenAI", openAiReady],
+    ["Quality Engine", true],
+    ["Customer Platform", supabaseReady],
+    ["Gemini", geminiReady],
+    ["Supabase", supabaseReady],
+    ["YouTube", hasEnv("YOUTUBE_CLIENT_ID") && hasEnv("YOUTUBE_CLIENT_SECRET")],
+    ["Naver", hasEnv("NAVER_ACCESS_TOKEN")],
+    ["Coupang", hasEnv("COUPANG_ACCESS_KEY")],
+    ["Temu", hasEnv("TEMU_APP_KEY")],
+  ] as const;
 
-const imageStyle: React.CSSProperties = {
-  width: "100%",
-  height: "180px",
-  objectFit: "cover",
-  background: "#f1f5f9",
-};
+  const connectedCount = externalServices.filter(([, ready]) => ready).length;
 
-const badgeStyle: React.CSSProperties = {
-  display: "inline-block",
-  padding: "4px 10px",
-  background: "#eef2ff",
-  color: "#4338ca",
-  borderRadius: "999px",
-  fontSize: "12px",
-  fontWeight: "bold",
-};
+  let productCount = 0;
+  let clickCount = 0;
+  let contentCount = 0;
+  let popular: { id: string; title: string; clicks: number }[] = [];
+  let loadError = "";
 
-const buttonStyle: React.CSSProperties = {
-  background: "#111827",
-  color: "white",
-  padding: "12px 18px",
-  borderRadius: "10px",
-  textDecoration: "none",
-  fontWeight: "bold",
-};
+  if (supabaseReady) {
+    try {
+      const supabase = await createClient();
+      const [{ data: products, error: productError }, contentResult] = await Promise.all([
+        supabase
+          .from("products")
+          .select("id,title,product_clicks(id)")
+          .order("created_at", { ascending: false }),
+        supabase.from("ai_contents").select("id", { count: "exact", head: true }),
+      ]);
 
-const smallButtonStyle: React.CSSProperties = {
-  border: "1px solid #d1d5db",
-  padding: "8px 12px",
-  borderRadius: "8px",
-  textDecoration: "none",
-  color: "#111827",
-  background: "white",
-};
+      if (productError) throw productError;
+
+      productCount = products?.length ?? 0;
+      contentCount = contentResult.count ?? 0;
+      clickCount = (products ?? []).reduce(
+        (sum, product) => sum + (product.product_clicks?.length ?? 0),
+        0
+      );
+      popular = (products ?? [])
+        .map((product) => ({
+          id: product.id,
+          title: product.title,
+          clicks: product.product_clicks?.length ?? 0,
+        }))
+        .sort((a, b) => b.clicks - a.clicks)
+        .slice(0, 5);
+    } catch (error) {
+      loadError =
+        error instanceof Error
+          ? error.message
+          : "대시보드 데이터를 불러오지 못했습니다.";
+    }
+  }
+
+  const workflow = [
+    ["1", "AI 전략회의", "Dream Y가 오늘의 목표와 우선순위를 결정", "/admin/strategy-room"],
+    ["2", "상품과 콘텐츠", "인기상품 분석 후 블로그·쇼츠 패키지 생성", "/admin/trends"],
+    ["3", "검수·예약·게시", "품질 확인 후 채널과 발행 시간을 지정", "/admin/publishing"],
+    ["4", "진화회의", "성과와 실패를 다음 전략에 반영", "/admin/evolution-room"],
+  ] as const;
+
+  return (
+    <>
+      <section className="dashboard-hero">
+        <div>
+          <span className="dashboard-kicker">GY FIRST RELEASE PRODUCTION 1.0</span>
+          <h1>GY Company OS 대표 상황실</h1>
+          <p>Dream Y가 상품·콘텐츠·품질·고객·게시·성장을 하나의 회사 운영 흐름으로 관리합니다.</p>
+        </div>
+        <div className="dashboard-actions">
+          <Link href="/admin/strategy-room" className="button button-dark">🧠 AI 전략회의 시작</Link>
+          <Link href="/admin/products/new" className="button button-primary">+ 새 상품 등록</Link>
+        </div>
+      </section>
+
+      {!supabaseReady && (
+        <div className="alert alert-warning dashboard-alert">
+          Supabase 환경변수가 없습니다. <Link href="/admin/settings"><b>설정 안내</b></Link>를 확인하세요.
+        </div>
+      )}
+      {loadError && <div className="alert alert-error dashboard-alert">{loadError}</div>}
+
+      <section className="dashboard-stats">
+        <article className="metric-card"><span>📦</span><div><p>등록 상품</p><strong>{productCount}개</strong></div></article>
+        <article className="metric-card"><span>🖱️</span><div><p>누적 클릭</p><strong>{clickCount}회</strong></div></article>
+        <article className="metric-card"><span>✨</span><div><p>생성 콘텐츠</p><strong>{contentCount}개</strong></div></article>
+        <article className="metric-card"><span>🔗</span><div><p>외부 연결</p><strong>{connectedCount}/{externalServices.length}</strong></div></article>
+      </section>
+
+      <section className="dashboard-grid-main">
+        <article className="dashboard-panel workflow-panel">
+          <div className="panel-heading">
+            <div><span className="panel-kicker">운영 흐름</span><h2>오늘의 AI Company OS 흐름</h2></div>
+            <Link href="/admin/automation">자동화 열기 →</Link>
+          </div>
+          <div className="workflow-grid">
+            {workflow.map(([step, title, description, href]) => (
+              <Link href={href} className="workflow-card" key={step}>
+                <span className="workflow-step">{step}</span>
+                <strong>{title}</strong>
+                <p>{description}</p>
+              </Link>
+            ))}
+          </div>
+        </article>
+
+        <article className="dashboard-panel connection-panel">
+          <div className="panel-heading">
+            <div><span className="panel-kicker">연결 상태</span><h2>외부 서비스</h2></div>
+            <Link href="/admin/connections">관리 →</Link>
+          </div>
+          <div className="service-list">
+            {externalServices.map(([name, ready]) => (
+              <div className="service-row" key={name}>
+                <span>{name}</span>
+                <b className={ready ? "ready" : "pending"}>{ready ? "등록 완료" : "설정 필요"}</b>
+              </div>
+            ))}
+          </div>
+        </article>
+      </section>
+
+      <section className="dashboard-grid-bottom">
+        <article className="dashboard-panel">
+          <div className="panel-heading">
+            <div><span className="panel-kicker">성과</span><h2>인기 상품 TOP 5</h2></div>
+            <Link href="/admin/analytics">통계 보기 →</Link>
+          </div>
+          {popular.length ? (
+            <div className="ranking-list">
+              {popular.map((item, index) => (
+                <div className="ranking-row" key={item.id}>
+                  <span className="rank-number">{index + 1}</span>
+                  <span className="rank-title">{item.title}</span>
+                  <strong>{item.clicks}회</strong>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty compact-empty">상품과 클릭 데이터가 아직 없습니다.</div>
+          )}
+        </article>
+
+        <article className="dashboard-panel quick-panel">
+          <div className="panel-heading"><div><span className="panel-kicker">바로가기</span><h2>빠른 작업</h2></div></div>
+          <div className="quick-grid">
+            <Link href="/admin/content">🤖<span><b>AI 콘텐츠</b><small>콘텐츠 패키지 생성</small></span></Link>
+            <Link href="/admin/import">📥<span><b>상품 자동 등록</b><small>JSON으로 빠르게 등록</small></span></Link>
+            <Link href="/admin/publishing">🚀<span><b>자동 게시</b><small>발행 대기열 관리</small></span></Link>
+            <Link href="/admin/settings">⚙️<span><b>설정 점검</b><small>API와 DB 상태 확인</small></span></Link>
+          </div>
+        </article>
+      </section>
+    </>
+  );
+}
