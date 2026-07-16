@@ -1,0 +1,15 @@
+GY-NEXUS Sprint 11.5 Universal Product Import Engine
+
+Implemented:
+- Platform detection: Coupang, Temu, Naver SmartStore, 11st, AliExpress, Amazon, generic stores
+- HTTP 403 and fetch failure fallback without blocking the workflow
+- Manual product entry mode preserving the affiliate URL
+- Original product page open action
+- Extraction method and reason display
+- Per-field confidence display
+- Policy-compliant metadata-first importer; no access-control bypass
+- Supabase migration for extraction diagnostics
+
+Validation:
+- Source and ZIP structure checked.
+- Production build should be verified on the operator PC with npm run build.

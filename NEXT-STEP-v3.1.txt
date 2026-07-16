@@ -1,0 +1,25 @@
+GY-NEXUS v3.1 첫 번째 운영 엔진 설치 순서
+
+1. 기존 프로젝트를 백업합니다.
+2. 이 압축파일을 새 폴더에 풉니다.
+3. Supabase 대시보드 > SQL Editor를 엽니다.
+4. supabase/schema.sql 파일 전체를 복사해 실행합니다.
+   - 기존 테이블은 유지되고 v3.1 AI 분석 컬럼만 추가됩니다.
+5. .env.local에 다음 값이 있는지 확인합니다.
+   NEXT_PUBLIC_SUPABASE_URL=
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=
+   OPENAI_API_KEY=
+   OPENAI_MODEL=gpt-5.5
+6. 터미널에서 npm install 실행
+7. npm run dev 실행
+8. 관리자 > 인기상품 AI 엔진 메뉴로 이동
+9. 상품명, 설명, 제휴 링크 입력 후 'AI 분석 후 후보 저장' 클릭
+10. 분석 결과가 나타나면 '정식 상품으로 전환' 클릭
+
+이번 버전 실제 동작
+- OpenAI 상품 분석
+- AI 추천점수/추천대상/핵심장점/SEO 키워드/쇼츠 훅 생성
+- Supabase trend_products 저장
+- 후보 삭제
+- products 테이블 정식 상품 전환
+- 콘텐츠 제작 메뉴 연결

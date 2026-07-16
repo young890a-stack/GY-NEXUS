@@ -1,0 +1,6 @@
+GY-NEXUS Ultimate v7.0.4 · Sprint 4 Creative Studio
+- OpenAI 실제 이미지 생성
+- Runway 실제 세로 영상 생성 / 이미지→영상
+- Supabase Storage 자동 저장
+- Creative Jobs 이력 및 실패 기록
+- 관리자 Creative Studio 화면

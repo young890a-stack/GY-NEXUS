@@ -1,0 +1,25 @@
+GY-NEXUS Ultimate v7.0 · Dream Y AI Company OS
+
+이번 교체본에서 실제 구현된 운영 기반
+- Dream Y AI 전략회의실
+- 8개 전문 AI 직원 역할 체계
+- Company Brain 의사결정 API
+- 실행 미션·위험·성공지표 자동 분해
+- 회사 기억센터 및 공유 메모리 DB
+- Evolution Room 진화 기록 DB
+- 전략회의 결과 저장
+- 대표 상황실과 사이드바 v7.0 개편
+- OpenAI 키 미설정 시에도 작동하는 안전한 기본 회의안
+
+설치
+1. 기존 프로젝트를 백업합니다.
+2. 이 ZIP의 파일을 프로젝트 폴더에 덮어씁니다.
+3. Supabase SQL Editor에서 supabase/schema.sql 전체를 실행합니다.
+4. npm install
+5. npm run dev
+6. /admin/strategy-room 접속
+
+중요
+- YouTube/Blogger 등 기존 연결 환경변수는 기존 .env.local을 유지합니다.
+- 외부 게시에는 계속 대표 승인 절차가 적용됩니다.
+- 쿠팡·Temu 데이터는 승인된 API/피드/제휴 링크 범위에서 사용해야 합니다.

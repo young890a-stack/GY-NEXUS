@@ -1,0 +1,8 @@
+GY-NEXUS Ultimate v7.0 · Sprint 6 Automation Engine
+
+- OpenAI → Image → Runway → Blogger → YouTube pipeline
+- Durable job queue with retry/cancel
+- Step-by-step execution logs
+- Reuses completed assets on retry
+- Blogger draft and YouTube private safe defaults
+- Supabase Sprint 6 migration included

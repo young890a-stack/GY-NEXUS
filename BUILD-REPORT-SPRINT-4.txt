@@ -1,0 +1,103 @@
+
+> gy-nexus-operating-foundation@7.0.4-sprint4 build
+> next build
+
+⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+▲ Next.js 16.2.10 (Turbopack)
+- Experiments (use with caution):
+  · cpus: 1
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 15.0s
+  Running TypeScript ...
+  Finished TypeScript in 5.3s ...
+  Collecting page data using 1 worker ...
+  Generating static pages using 1 worker (0/46) ...
+  Generating static pages using 1 worker (11/46) 
+  Generating static pages using 1 worker (22/46) 
+  Generating static pages using 1 worker (34/46) 
+✓ Generating static pages using 1 worker (46/46) in 500ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /admin
+├ ƒ /admin/analytics
+├ ○ /admin/assistant
+├ ƒ /admin/automation
+├ ƒ /admin/connections
+├ ○ /admin/content
+├ ○ /admin/content-factory
+├ ƒ /admin/content/history
+├ ƒ /admin/content/history/[id]
+├ ○ /admin/creative-studio
+├ ƒ /admin/evolution-room
+├ ○ /admin/import
+├ ƒ /admin/memory
+├ ƒ /admin/product-intelligence
+├ ƒ /admin/products
+├ ƒ /admin/products/[id]/edit
+├ ○ /admin/products/new
+├ ƒ /admin/publishing
+├ ƒ /admin/revenue
+├ ○ /admin/schedules
+├ ƒ /admin/settings
+├ ○ /admin/setup
+├ ○ /admin/strategy-room
+├ ƒ /admin/trends
+├ ○ /admin/youtube
+├ ƒ /api/ai/blog
+├ ƒ /api/ai/content
+├ ƒ /api/ai/generate
+├ ƒ /api/ai/shorts
+├ ƒ /api/assistant/command
+├ ƒ /api/automation/run
+├ ƒ /api/click
+├ ƒ /api/company/evolution
+├ ƒ /api/company/memory
+├ ƒ /api/company/strategy
+├ ƒ /api/connections/blogger/callback
+├ ƒ /api/connections/blogger/disconnect
+├ ƒ /api/connections/blogger/start
+├ ƒ /api/connections/coupang/test
+├ ƒ /api/connections/naver/callback
+├ ƒ /api/connections/naver/disconnect
+├ ƒ /api/connections/naver/start
+├ ƒ /api/connections/status
+├ ƒ /api/connections/temu/test
+├ ƒ /api/connections/youtube/callback
+├ ƒ /api/connections/youtube/disconnect
+├ ƒ /api/connections/youtube/start
+├ ƒ /api/content-factory/generate
+├ ƒ /api/creative-studio/image
+├ ƒ /api/creative-studio/jobs
+├ ƒ /api/creative-studio/video
+├ ƒ /api/import/revenue
+├ ƒ /api/import/trends
+├ ƒ /api/product-intelligence/batch
+├ ƒ /api/products/[id]
+├ ƒ /api/products/bulk
+├ ƒ /api/publish/run
+├ ƒ /api/schedules
+├ ƒ /api/system/health
+├ ƒ /api/trends/[id]
+├ ƒ /api/trends/[id]/promote
+├ ƒ /api/trends/analyze
+├ ƒ /api/youtube/upload
+├ ƒ /go
+├ ○ /login
+└ ƒ /products
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

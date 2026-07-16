@@ -1,0 +1,9 @@
+GY-NEXUS Ultimate v7.0 · Sprint 5
+One-Click Publisher
+
+- Blogger official API publishing and draft creation
+- WordPress REST publishing
+- Make/Zapier/n8n webhook publishing
+- Publishing queue CRUD
+- Scheduled execution, retry, cancellation and result tracking
+- Existing Sprint 4 Creative Studio hotfix preserved

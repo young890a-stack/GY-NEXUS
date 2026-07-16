@@ -1,0 +1,13 @@
+GY-NEXUS v4.0 CONNECT-ONLY 검증 기록
+
+- TrendEngine 비동기 form reset 오류 수정
+- 브라우저 확장 프로그램의 폼 속성 변경에 대한 Hydration 경고 완화
+- API 응답 JSON 안전 처리
+- 글로벌 오류 복구 화면 추가
+- 서버/Supabase/DB/OpenAI 원클릭 진단 추가
+- Windows 처음 설치/서버 실행/최종 점검 BAT 추가
+- 빌드 작업자 1개로 제한하여 Windows 및 저사양 PC 빌드 안정성 향상
+- ESLint 검사 통과
+- Next.js production build 통과
+
+외부 플랫폼 연결은 해당 플랫폼의 공식 API 제공 여부와 계정 권한에 따라 별도 키 또는 웹훅 연결이 필요합니다.

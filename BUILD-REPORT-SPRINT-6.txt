@@ -1,0 +1,23 @@
+GY-NEXUS Sprint 6 Build Report
+Date: 2026-07-14
+Version: 7.0.6-sprint6
+
+PASS: npm install
+PASS: next build
+PASS: TypeScript validation
+PASS: 47 routes generated
+
+Implemented:
+- Automation Engine pipeline
+- Supabase job queue
+- Retry/cancel controls
+- Step execution logs
+- OpenAI content and image generation
+- Runway video generation
+- Blogger publishing
+- WordPress/webhook publishing
+- YouTube remote video upload
+- Safe defaults: Blogger draft, YouTube private
+
+Required after install:
+- Run supabase/SPRINT-6-MIGRATION.sql once in Supabase SQL Editor.

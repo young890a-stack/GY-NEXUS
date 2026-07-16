@@ -1,0 +1,5 @@
+GY-NEXUS Ultimate v7.0.3 — Sprint 3 Content Factory
+- One-click structured content package
+- Blog + Shorts + Thumbnail + Image prompts + Video prompt + SRT
+- Supabase content_factory_runs history
+- Korean manual/AI-reviewed subtitles as default

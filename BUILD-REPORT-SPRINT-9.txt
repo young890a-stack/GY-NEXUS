@@ -1,0 +1,8 @@
+GY-NEXUS Sprint 9 · Growth Intelligence
+- Search Console + GA4 unified OAuth scopes
+- Unified Growth Intelligence dashboard
+- Search performance metrics and keyword/page tables
+- GA4 users, sessions, views, engagement and top pages
+- Dream Y AI growth report endpoint
+- OAuth token error diagnostics improved
+- Supabase Sprint 9 migration included

@@ -1,0 +1,19 @@
+GY-NEXUS Creative Studio Pro Build Report
+
+Added:
+- /admin/creative-studio-pro mobile-responsive UI
+- 20/25/30 second multi-shot planning
+- 5-second Runway scene generation and per-scene retry
+- video_projects, video_scenes, video_render_jobs migration
+- external FFmpeg Worker render request/callback adapter
+- Korean subtitle / voice / music configuration persistence
+- admin sidebar navigation
+
+Validation:
+- ZIP structure and source-file inspection completed.
+- npm dependency installation in the build environment timed out, so a full Next.js production build was not completed here.
+- Run `npm install` and `npm run build` on the target PC before deployment.
+
+Important:
+- Scene generation works after Runway and Supabase are configured.
+- Final clip concatenation, subtitle burn-in, TTS and music mixing require VIDEO_WORKER_URL pointing to a long-running FFmpeg worker (Render/Railway recommended).

@@ -1,0 +1,7 @@
+GY-NEXUS Ultimate v7.0 · Sprint 9
+Growth Intelligence integrated release
+
+New route: /admin/growth
+New APIs: /api/growth/overview, /api/growth/report
+Google OAuth now requests Search Console + GA4 read-only scopes.
+Important: CONNECTION_ENCRYPTION_KEY must be configured.

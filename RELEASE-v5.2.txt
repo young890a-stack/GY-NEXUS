@@ -1,0 +1,17 @@
+GY-NEXUS v5.2 LIVE CONNECTIONS
+
+추가 기능
+- YouTube OAuth 2.0 실제 계정 연결
+- YouTube 채널 조회 및 업로드 권한 확인
+- Naver OAuth 실제 로그인 및 프로필 조회
+- Coupang Partners HMAC 서명 API 실시간 테스트
+- Temu Affiliate 링크 템플릿 검증
+- OAuth state 검증
+- AES-256-GCM 암호화 HTTP-only 쿠키 토큰 저장
+- 실제 연결 상태 UI
+
+중요 제한
+- 네이버의 현재 공개 오픈 API 목록에는 블로그 글쓰기 API가 없습니다.
+  따라서 네이버 연결은 로그인/프로필 확인이며 블로그는 복사 후 수동 발행 방식입니다.
+- Temu 제휴 API는 계정 및 승인 프로그램에 따라 제공 범위가 다릅니다.
+  승인 문서가 없는 계정은 제휴 링크 템플릿 모드로 동작합니다.

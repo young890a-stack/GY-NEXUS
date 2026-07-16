@@ -1,0 +1,19 @@
+GY-NEXUS 운영형 기반 교체본 빌드 결과
+
+검증 명령: npm run build
+결과: 성공
+Next.js: 16.2.10
+TypeScript 검사: 성공
+정적/동적 라우트 생성: 성공
+
+추가된 주요 라우트
+- /admin/assistant
+- /admin/setup
+- /api/assistant/command
+- /api/connections/blogger/start
+- /api/connections/blogger/callback
+- /api/connections/blogger/disconnect
+
+주의
+- Next.js 16의 middleware 파일명 사용 중단 예정 경고가 있으나 현재 빌드는 정상입니다.
+- npm audit에서 moderate 2건이 보고되었으나 강제 업그레이드는 호환성 검토 없이 적용하지 않았습니다.

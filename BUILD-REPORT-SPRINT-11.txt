@@ -1,0 +1,23 @@
+GY-NEXUS Sprint 11 · Dream Y Product DNA Engine
+
+통합 기준: GY-NEXUS Ultimate v7.0 Creative Studio Pro
+추가 경로:
+- /admin/product-dna
+- /api/product-dna/import
+- /api/product-dna/campaign
+
+핵심 품질 보강:
+- 제휴 URL 리디렉션 및 공개 메타데이터/JSON-LD 추출
+- localhost 및 대표적인 사설 네트워크 주소 차단
+- 추출 실패 시 수동 보완 흐름
+- 원본 광고 사진·문장·구도·로고를 복제하지 않는 재창작 기본 모드
+- 확인되지 않은 가격·할인·성능·인증·후기 생성 금지 프롬프트
+- 새 광고 이미지 생성 후 Creative Studio Pro 멀티샷 프로젝트 자동 생성
+- Supabase 이력 저장
+- 모바일 반응형 UI
+
+검증 상태:
+- ZIP 구조 및 새 파일 존재 여부 점검 완료
+- package.json/lock 버전 동기화 완료
+- npm 패키지 설치가 제작 환경 네트워크 시간 제한으로 끝나지 않아 production build는 실행하지 못함
+- 사용자 컴퓨터에서 npm install 후 npm run build 실행 필요
