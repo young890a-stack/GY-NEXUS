@@ -15,7 +15,8 @@ export default function SiteHeader() {
           <Link href="/discover">Content</Link>
           <Link href="/products">Products</Link>
           <Link href="/member">My GY</Link>
-          <Link href="/admin" className="gy-nav-cta">Open GY</Link>
+          <Link href="/admin/ai-factory">AI Factory</Link>
+          <Link href="/admin" className="gy-nav-cta">Open GY <b>↗</b></Link>
         </nav>
       </div>
     </header>

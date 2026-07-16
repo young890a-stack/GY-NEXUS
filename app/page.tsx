@@ -3,13 +3,13 @@ import SiteHeader from "@/components/SiteHeader";
 import { hasOpenAIEnv, hasSupabaseEnv } from "@/lib/env";
 
 const capabilities = [
-  { kicker: "DISCOVER", title: "GY Product DNA", text: "상품 링크와 핵심 정보를 분석해 브랜드에 맞는 판매 포인트와 캠페인 구조를 설계합니다." },
-  { kicker: "CREATE", title: "GY Studio", text: "블로그, 쇼츠, 이미지, 썸네일과 20·25·30초 영상 흐름을 하나의 제작 경험으로 연결합니다." },
-  { kicker: "VERIFY", title: "GY Quality", text: "사실성, SEO, 가독성, 브랜드 일관성, 과장 표현을 검수해 게시 가능한 수준으로 끌어올립니다." },
-  { kicker: "GROW", title: "GY Growth", text: "게시 이후 유입과 성과를 읽고 다음 콘텐츠와 상품 기회를 더 정교하게 제안합니다." },
+  { number: "01", kicker: "DISCOVER", title: "GY Product DNA", text: "상품 링크와 핵심 정보를 분석해 판매 포인트, 타깃, 메시지와 캠페인 구조를 설계합니다." },
+  { number: "02", kicker: "CREATE", title: "GY AI Factory", text: "블로그, 쇼츠, 이미지, 썸네일과 20·25·30초 영상 흐름을 하나의 제작 경험으로 연결합니다." },
+  { number: "03", kicker: "VERIFY", title: "GY Quality", text: "사실성, SEO, 가독성, 브랜드 일관성과 과장 표현을 검수해 게시 가능한 수준으로 끌어올립니다." },
+  { number: "04", kicker: "GROW", title: "GY Growth", text: "게시 이후 유입과 성과를 읽고 다음 콘텐츠와 상품 기회를 더 정교하게 제안합니다." },
 ];
 
-const flow = ["Import", "Product DNA", "GY Studio", "Quality", "Publish", "Growth"];
+const flow = ["Import", "Product DNA", "AI Factory", "Quality", "Publish", "Growth"];
 
 export default function Home() {
   const supabaseReady = hasSupabaseEnv();
@@ -22,28 +22,29 @@ export default function Home() {
         <section className="gy-hero">
           <div className="gy-aurora gy-aurora-a" />
           <div className="gy-aurora gy-aurora-b" />
+          <div className="gy-noise" />
           <div className="container gy-hero-grid">
             <div className="gy-hero-copy">
-              <span className="gy-pill">GY FIRST RELEASE PRODUCTION 1.0</span>
+              <span className="gy-pill"><i /> GY FIRST RELEASE · PRODUCTION 1.0</span>
               <h1>
-                <span>GY</span>
+                <span>Build with GY.</span>
                 <br />
-                Create better.
+                Create with precision.
                 <br />
                 <em>Grow with clarity.</em>
               </h1>
               <p>
-                상품 발굴부터 콘텐츠 제작, 품질 검수, 게시와 성장 분석까지.
-                흩어진 작업을 하나의 정교한 GY 경험으로 연결합니다.
+                상품 발굴, 콘텐츠 제작, 품질 검수, 게시와 성장 분석까지.
+                흩어진 업무를 하나의 고급스러운 운영 경험으로 연결합니다.
               </p>
               <div className="gy-actions">
-                <Link href="/admin" className="gy-button gy-button-primary">GY 시작하기</Link>
-                <Link href="/discover" className="gy-button gy-button-ghost">브랜드 경험 보기</Link>
+                <Link href="/admin" className="gy-button gy-button-primary">GY 열기 <b>↗</b></Link>
+                <Link href="/admin/ai-factory" className="gy-button gy-button-ghost">AI Factory 보기</Link>
               </div>
               <div className="gy-proof-row">
-                <span>Quality-first</span>
-                <span>Mobile-ready</span>
-                <span>Brand-consistent</span>
+                <span>Production-ready</span>
+                <span>Mobile-first</span>
+                <span>Quality-gated</span>
               </div>
             </div>
 
@@ -53,38 +54,74 @@ export default function Home() {
                 <span className="gy-live"><i /> LIVE</span>
               </div>
               <div className="gy-core-wrap">
+                <div className="gy-core-halo" />
                 <div className="gy-core-ring gy-ring-one" />
                 <div className="gy-core-ring gy-ring-two" />
                 <div className="gy-core">GY</div>
                 <div className="gy-float gy-float-a">Product DNA</div>
-                <div className="gy-float gy-float-b">Studio</div>
+                <div className="gy-float gy-float-b">AI Factory</div>
                 <div className="gy-float gy-float-c">Quality</div>
                 <div className="gy-float gy-float-d">Growth</div>
               </div>
               <div className="gy-metrics">
                 <div><small>Brand score</small><strong>96</strong></div>
                 <div><small>Quality gate</small><strong>Ready</strong></div>
-                <div><small>System status</small><strong>Stable</strong></div>
+                <div><small>System</small><strong>Stable</strong></div>
               </div>
             </div>
+          </div>
+          <div className="gy-scroll-cue"><span /> Explore GY</div>
+        </section>
+
+        <section className="gy-trust-strip">
+          <div className="container">
+            <span>PRODUCT DNA</span><i />
+            <span>AI FACTORY</span><i />
+            <span>QUALITY ENGINE</span><i />
+            <span>PUBLISHING</span><i />
+            <span>GROWTH INTELLIGENCE</span>
           </div>
         </section>
 
         <section className="gy-section container">
           <div className="gy-section-heading">
             <span className="gy-kicker">GY PLATFORM</span>
-            <h2>기능이 아니라, 하나의 완성된 흐름.</h2>
-            <p>고객이 이해하기 쉽고, 운영자는 빠르게 판단할 수 있도록 모든 단계를 하나의 경험으로 설계합니다.</p>
+            <h2>도구의 집합이 아니라,<br />하나의 완성된 흐름.</h2>
+            <p>고객에게는 단순하고 인상적인 경험을, 운영에는 빠른 판단과 높은 품질을 제공합니다.</p>
           </div>
           <div className="gy-capability-grid">
             {capabilities.map((item) => (
               <article key={item.title} className="gy-capability-card">
+                <div className="gy-card-number">{item.number}</div>
                 <span>{item.kicker}</span>
                 <h3>{item.title}</h3>
                 <p>{item.text}</p>
-                <b>Explore →</b>
+                <Link href="/admin" aria-label={`${item.title} 열기`}>Explore <b>↗</b></Link>
               </article>
             ))}
+          </div>
+        </section>
+
+        <section className="gy-showcase-section">
+          <div className="container gy-showcase-grid">
+            <div>
+              <span className="gy-kicker">AI FACTORY</span>
+              <h2>한 번의 입력으로<br />브랜드 콘텐츠를 완성합니다.</h2>
+              <p>제휴 링크나 상품 정보에서 Product DNA를 만들고, 블로그·쇼츠·이미지·영상까지 일관된 톤으로 확장합니다.</p>
+              <Link href="/admin/ai-factory" className="gy-text-link">Open GY AI Factory <b>↗</b></Link>
+            </div>
+            <div className="gy-showcase-window">
+              <div className="gy-window-top"><span /><span /><span /><b>GY / AI FACTORY</b></div>
+              <div className="gy-window-body">
+                <div className="gy-window-sidebar"><i /><i /><i /><i /></div>
+                <div className="gy-window-content">
+                  <span>CAMPAIGN READY</span>
+                  <h3>Product DNA → Premium Shorts</h3>
+                  <div className="gy-progress"><b /></div>
+                  <div className="gy-window-cards"><i /><i /><i /></div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -93,9 +130,9 @@ export default function Home() {
             <div className="gy-flow-head">
               <div>
                 <span className="gy-kicker">OPERATING FLOW</span>
-                <h2>GY가 연결하는 전체 과정</h2>
+                <h2>처음부터 결과까지,<br />GY가 연결합니다.</h2>
               </div>
-              <p>단절된 도구가 아니라, 처음부터 결과까지 이어지는 운영 흐름입니다.</p>
+              <p>단절된 도구가 아니라, 발견·제작·검수·게시·성장으로 이어지는 하나의 운영 시스템입니다.</p>
             </div>
             <div className="gy-flow-grid">
               {flow.map((item, index) => (
@@ -112,19 +149,19 @@ export default function Home() {
           <div>
             <span className="gy-kicker">SYSTEM STATUS</span>
             <h2>배포를 위한 핵심 연결 상태</h2>
-            <p>외부 계정 연결 후 Vercel에 배포하면 PC와 모바일에서 24시간 운영할 수 있습니다.</p>
+            <p>외부 계정을 연결하고 Vercel에 배포하면 PC와 모바일에서 24시간 운영할 수 있습니다.</p>
           </div>
           <div className="gy-status-list">
-            <span className={supabaseReady ? "ready" : "pending"}>Supabase · {supabaseReady ? "Ready" : "Setup required"}</span>
-            <span className={openAiReady ? "ready" : "pending"}>OpenAI · {openAiReady ? "Ready" : "Setup required"}</span>
+            <span className={supabaseReady ? "ready" : "pending"}>Supabase <b>{supabaseReady ? "Ready" : "Setup required"}</b></span>
+            <span className={openAiReady ? "ready" : "pending"}>OpenAI <b>{openAiReady ? "Ready" : "Setup required"}</b></span>
           </div>
         </section>
       </main>
 
       <footer className="gy-footer">
         <div className="container">
-          <strong>GY</strong>
-          <span>Create better. Grow with clarity.</span>
+          <div><strong>GY</strong><span>AI Content & Commerce Platform</span></div>
+          <span>Create with precision. Grow with clarity.</span>
         </div>
       </footer>
     </div>
