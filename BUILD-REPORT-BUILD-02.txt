@@ -1,0 +1,15 @@
+GY First Release Production 1.0 · Build 02 Company OS Core
+
+Verification
+- npm run build: PASS
+- TypeScript: PASS
+- Static/Dynamic routes: 71 pages generated
+- Next.js: 16.2.10
+
+Core changes
+- Added GY admin topbar and Owner mode indicator
+- Simplified sidebar into Company / Create / Operate / System
+- Removed representative-centered wording and One Human slogan from Company OS
+- Rebranded dashboard as GY Command Center
+- Improved responsive Company OS layout and GY visual language
+- Preserved existing APIs, pages and external integrations

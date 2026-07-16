@@ -81,11 +81,11 @@ export default async function AdminDashboard() {
       <section className="dashboard-hero">
         <div>
           <span className="dashboard-kicker">GY FIRST RELEASE PRODUCTION 1.0</span>
-          <h1>GY Company OS 대표 상황실</h1>
-          <p>Dream Y가 상품·콘텐츠·품질·고객·게시·성장을 하나의 회사 운영 흐름으로 관리합니다.</p>
+          <h1>GY Command Center</h1>
+          <p>GY의 상품·콘텐츠·품질·고객·게시·성장 흐름을 한 화면에서 운영합니다.</p>
         </div>
         <div className="dashboard-actions">
-          <Link href="/admin/strategy-room" className="button button-dark">🧠 AI 전략회의 시작</Link>
+          <Link href="/admin/strategy-room" className="button button-dark">🧠 오늘 운영 시작</Link>
           <Link href="/admin/products/new" className="button button-primary">+ 새 상품 등록</Link>
         </div>
       </section>
@@ -107,7 +107,7 @@ export default async function AdminDashboard() {
       <section className="dashboard-grid-main">
         <article className="dashboard-panel workflow-panel">
           <div className="panel-heading">
-            <div><span className="panel-kicker">운영 흐름</span><h2>오늘의 AI Company OS 흐름</h2></div>
+            <div><span className="panel-kicker">운영 흐름</span><h2>오늘의 GY 운영 흐름</h2></div>
             <Link href="/admin/automation">자동화 열기 →</Link>
           </div>
           <div className="workflow-grid">
@@ -161,7 +161,7 @@ export default async function AdminDashboard() {
         <article className="dashboard-panel quick-panel">
           <div className="panel-heading"><div><span className="panel-kicker">바로가기</span><h2>빠른 작업</h2></div></div>
           <div className="quick-grid">
-            <Link href="/admin/content">🤖<span><b>AI 콘텐츠</b><small>콘텐츠 패키지 생성</small></span></Link>
+            <Link href="/admin/content">🤖<span><b>GY 콘텐츠</b><small>콘텐츠 패키지 생성</small></span></Link>
             <Link href="/admin/import">📥<span><b>상품 자동 등록</b><small>JSON으로 빠르게 등록</small></span></Link>
             <Link href="/admin/publishing">🚀<span><b>자동 게시</b><small>발행 대기열 관리</small></span></Link>
             <Link href="/admin/settings">⚙️<span><b>설정 점검</b><small>API와 DB 상태 확인</small></span></Link>

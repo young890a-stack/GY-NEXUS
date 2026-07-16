@@ -686,3 +686,77 @@ img { display: block; max-width: 100%; }
 @media(max-width:900px){.production-hero-grid,.quality-layout,.brand-center-grid{grid-template-columns:1fr}.company-orbit{min-height:390px}.quality-score{position:static}.strategy-grid{grid-template-columns:1fr}.production-ready{align-items:flex-start;flex-direction:column}}
 @media(max-width:680px){.production-hero{padding:45px 0;min-height:auto}.production-hero h1{font-size:45px}.company-orbit{min-height:340px}.company-orbit:before{width:260px;height:260px}.orbit-item{font-size:10px}.production-ready{margin-inline:11px}.member-hero h1{font-size:32px}.quality-textarea{min-height:340px}}
 .brand-copy-public{display:grid;line-height:1.08}.brand-copy-public strong{font-size:15px}.brand-copy-public small{margin-top:4px;color:var(--muted);font-size:9px;letter-spacing:.08em;text-transform:uppercase}
+
+/* GY Foundation Build 02 · Company OS Core */
+.admin-main {
+  padding: 0;
+  background:
+    radial-gradient(circle at 76% -8%, rgba(99,102,241,.10), transparent 28%),
+    linear-gradient(180deg, #f7f9fd 0%, #f2f5fa 100%);
+}
+.admin-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 24;
+  min-height: 72px;
+  padding: 14px 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid rgba(148,163,184,.22);
+  background: rgba(248,250,252,.86);
+  backdrop-filter: blur(18px);
+}
+.admin-topbar > div:first-child { display: grid; gap: 3px; }
+.admin-topbar-kicker { color: #6366f1; font-size: 10px; font-weight: 900; letter-spacing: .16em; }
+.admin-topbar strong { font-size: 18px; letter-spacing: -.025em; }
+.admin-topbar-actions { display: flex; align-items: center; gap: 10px; }
+.owner-status { display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid #dbe3f0; border-radius: 999px; background: #fff; color: #475569; font-size: 12px; font-weight: 850; }
+.owner-status i { width: 7px; height: 7px; border-radius: 999px; background: #10b981; box-shadow: 0 0 0 4px rgba(16,185,129,.11); }
+.admin-content-wrap { max-width: 1540px; margin: 0 auto; padding: 30px; }
+.admin-brand { text-decoration: none; }
+.admin-brand .brand-copy strong { font-size: 22px; letter-spacing: -.055em; }
+.admin-brand .brand-copy small { letter-spacing: .14em; }
+.nav-icon { width: 20px; display: inline-grid; place-items: center; color: #91a1c1; font-size: 14px; }
+.side-nav a.active .nav-icon { color: #fff; }
+.dashboard-hero {
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(99,102,241,.16);
+  background:
+    radial-gradient(circle at 88% 20%, rgba(34,211,238,.24), transparent 22%),
+    radial-gradient(circle at 70% 0%, rgba(139,92,246,.28), transparent 34%),
+    linear-gradient(135deg, #0c1530 0%, #172554 55%, #312e81 100%);
+}
+.dashboard-hero::after {
+  content: "GY";
+  position: absolute;
+  right: 34px;
+  bottom: -34px;
+  color: rgba(255,255,255,.045);
+  font-size: clamp(110px, 18vw, 260px);
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: -.09em;
+  pointer-events: none;
+}
+.dashboard-hero h1 { color: #fff; }
+.dashboard-hero p { color: #cbd5e1; max-width: 720px; }
+.dashboard-kicker { color: #a5b4fc; }
+.company-os-readiness { border: 0; box-shadow: 0 24px 70px rgba(49,46,129,.18); }
+.company-os-flow-item, .service-row, .metric-card, .dashboard-panel { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.company-os-flow-item:hover, .metric-card:hover, .dashboard-panel:hover { transform: translateY(-2px); box-shadow: 0 18px 45px rgba(15,23,42,.08); }
+
+@media (max-width: 980px) {
+  .admin-topbar { position: relative; padding: 13px 18px; }
+  .admin-content-wrap { padding: 20px; }
+  .admin-public-link { display: none; }
+}
+@media (max-width: 680px) {
+  .admin-topbar { align-items: flex-start; }
+  .admin-topbar-actions { margin-top: 2px; }
+  .owner-status { padding: 7px 9px; }
+  .admin-content-wrap { padding: 14px; }
+  .dashboard-hero::after { right: 10px; bottom: -18px; font-size: 110px; }
+}
