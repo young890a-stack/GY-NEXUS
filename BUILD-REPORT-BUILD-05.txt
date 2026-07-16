@@ -1,0 +1,132 @@
+
+> gy-first-release-production@1.0.0 build
+> next build
+
+▲ Next.js 16.2.10 (Turbopack)
+- Experiments (use with caution):
+  · cpus: 1
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 12.8s
+  Running TypeScript ...
+  Finished TypeScript in 5.0s ...
+  Collecting page data using 1 worker ...
+  Generating static pages using 1 worker (0/72) ...
+  Generating static pages using 1 worker (18/72) 
+  Generating static pages using 1 worker (36/72) 
+  Generating static pages using 1 worker (54/72) 
+✓ Generating static pages using 1 worker (72/72) in 419ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /admin
+├ ○ /admin/ai-factory
+├ ƒ /admin/analytics
+├ ○ /admin/assistant
+├ ƒ /admin/automation
+├ ○ /admin/brand-center
+├ ƒ /admin/company-os
+├ ƒ /admin/connections
+├ ○ /admin/content
+├ ○ /admin/content-factory
+├ ƒ /admin/content/history
+├ ƒ /admin/content/history/[id]
+├ ○ /admin/creative-studio
+├ ○ /admin/creative-studio-pro
+├ ƒ /admin/evolution-room
+├ ƒ /admin/growth
+├ ○ /admin/import
+├ ƒ /admin/memory
+├ ○ /admin/product-dna
+├ ƒ /admin/product-intelligence
+├ ƒ /admin/products
+├ ƒ /admin/products/[id]/edit
+├ ○ /admin/products/new
+├ ƒ /admin/publishing
+├ ○ /admin/publishing-strategy
+├ ○ /admin/quality-center
+├ ƒ /admin/revenue
+├ ○ /admin/schedules
+├ ƒ /admin/seo-studio
+├ ƒ /admin/settings
+├ ○ /admin/setup
+├ ○ /admin/strategy-room
+├ ƒ /admin/trends
+├ ○ /admin/youtube
+├ ƒ /api/ai/blog
+├ ƒ /api/ai/content
+├ ƒ /api/ai/generate
+├ ƒ /api/ai/shorts
+├ ƒ /api/assistant/command
+├ ƒ /api/automation/jobs
+├ ƒ /api/automation/process
+├ ƒ /api/automation/run
+├ ƒ /api/click
+├ ƒ /api/company-os/brief
+├ ƒ /api/company-os/overview
+├ ƒ /api/company/evolution
+├ ƒ /api/company/memory
+├ ƒ /api/company/strategy
+├ ƒ /api/connections/blogger/callback
+├ ƒ /api/connections/blogger/disconnect
+├ ƒ /api/connections/blogger/start
+├ ƒ /api/connections/coupang/test
+├ ƒ /api/connections/naver/callback
+├ ƒ /api/connections/naver/disconnect
+├ ƒ /api/connections/naver/start
+├ ƒ /api/connections/status
+├ ƒ /api/connections/temu/test
+├ ƒ /api/connections/youtube/callback
+├ ƒ /api/connections/youtube/disconnect
+├ ƒ /api/connections/youtube/start
+├ ƒ /api/content-factory/generate
+├ ƒ /api/creative-studio-pro/projects
+├ ƒ /api/creative-studio-pro/projects/[id]
+├ ƒ /api/creative-studio-pro/projects/[id]/generate-next
+├ ƒ /api/creative-studio-pro/projects/[id]/render
+├ ƒ /api/creative-studio-pro/projects/[id]/render-callback
+├ ƒ /api/creative-studio/image
+├ ƒ /api/creative-studio/jobs
+├ ƒ /api/creative-studio/video
+├ ƒ /api/growth/overview
+├ ƒ /api/growth/report
+├ ƒ /api/import/revenue
+├ ƒ /api/import/trends
+├ ƒ /api/product-dna/campaign
+├ ƒ /api/product-dna/import
+├ ƒ /api/product-intelligence/batch
+├ ƒ /api/product-intelligence/collect
+├ ƒ /api/product-intelligence/promote-top
+├ ƒ /api/products/[id]
+├ ƒ /api/products/bulk
+├ ƒ /api/publish/run
+├ ƒ /api/publishing/jobs
+├ ƒ /api/schedules
+├ ƒ /api/search-console/callback
+├ ƒ /api/search-console/disconnect
+├ ƒ /api/search-console/performance
+├ ƒ /api/search-console/sites
+├ ƒ /api/search-console/start
+├ ƒ /api/seo/analyze
+├ ƒ /api/seo/reports
+├ ƒ /api/system/health
+├ ƒ /api/trends/[id]
+├ ƒ /api/trends/[id]/promote
+├ ƒ /api/trends/analyze
+├ ƒ /api/youtube/upload
+├ ○ /discover
+├ ƒ /go
+├ ○ /login
+├ ○ /manifest.webmanifest
+├ ƒ /member
+├ ƒ /products
+└ ○ /signup
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

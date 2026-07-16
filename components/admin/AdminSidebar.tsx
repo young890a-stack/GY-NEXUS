@@ -10,7 +10,7 @@ const navigationGroups = [
       ["🏠", "GY Command Center", "/admin"],
       ["🛡️", "품질 검수센터", "/admin/quality-center"],
       ["🎯", "게시 전략센터", "/admin/publishing-strategy"],
-      ["🏢", "AI Company OS", "/admin/company-os"],
+      ["🏢", "GY Company OS", "/admin/company-os"],
       ["🧠", "Dream Y 전략회의", "/admin/strategy-room"],
       ["💬", "AI 운영 비서", "/admin/assistant"],
       ["🧬", "Evolution Room", "/admin/evolution-room"],
@@ -107,7 +107,7 @@ export default function AdminSidebar() {
           <span className="status-dot" />
           <div>
             <strong>운영 시스템</strong>
-            <small>Dream Y Core 가동 중</small>
+            <small>GY Core · 정상 가동</small>
           </div>
         </div>
       </div>
