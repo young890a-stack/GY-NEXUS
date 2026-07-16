@@ -12,6 +12,7 @@ const labels: Array<[string, string]> = [
   ["/admin/growth", "GY Growth"],
   ["/admin/connections", "GY Connections"],
   ["/admin/brand-center", "GY Brand Center"],
+  ["/admin/customers", "GY Customer Center"],
   ["/admin", "GY Command Center"],
 ];
 

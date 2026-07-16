@@ -38,6 +38,7 @@ const navigationGroups = [
     items: [
       ["∞", "Connections", "/admin/connections"],
       ["◉", "Analytics", "/admin/analytics"],
+      ["♙", "Customers", "/admin/customers"],
       ["◆", "Brand Center", "/admin/brand-center"],
       ["⚙", "Settings", "/admin/settings"],
     ],

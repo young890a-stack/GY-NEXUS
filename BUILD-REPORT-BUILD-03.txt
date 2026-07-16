@@ -1,0 +1,16 @@
+GY First Release Production 1.0 · Build 03 Customer Platform
+
+Verification
+- npm install: success
+- npm run build: success
+- TypeScript: success
+- Next.js: 16.2.10
+- Customer routes added: /member/profile, /member/bookmarks, /member/comments, /member/notifications, /member/inquiries, /support, /admin/customers
+- API added: /api/customer/inquiries
+- Auth callback added: /auth/callback
+
+Database
+Run: supabase/BUILD-03-CUSTOMER-PLATFORM.sql
+
+Owner security
+Set OWNER_EMAIL in .env.local to restrict /admin to the single owner account.
