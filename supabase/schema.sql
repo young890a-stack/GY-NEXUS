@@ -429,3 +429,8 @@ create table if not exists public.competitor_analysis (
 alter table public.competitor_analysis enable row level security;
 drop policy if exists "public can manage competitor analysis" on public.competitor_analysis;
 create policy "public can manage competitor analysis" on public.competitor_analysis for all using (true) with check (true);
+
+-- ===== Sprint 5 · Publish Center =====
+alter table public.publishing_jobs add column if not exists payload jsonb not null default '{}'::jsonb;
+alter table public.publishing_jobs add column if not exists max_attempts integer not null default 3;
+create index if not exists publishing_jobs_channel_idx on public.publishing_jobs(channel, created_at desc);

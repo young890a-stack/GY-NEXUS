@@ -1,0 +1,9 @@
+GY-NEXUS AI COMPANY OS v2.0
+SPRINT 5 · PUBLISH CENTER
+
+- Multi-channel queue: YouTube, Blogger, Naver
+- YouTube video, metadata, tags and thumbnail uploader
+- Blogger HTML, labels, draft/publish support
+- Naver review-safe publishing package and share flow
+- Scheduling, retry, cancellation and history
+- Integrated with Sprint 1~4
