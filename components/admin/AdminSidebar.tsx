@@ -2,60 +2,69 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import GyIcon from "./GyIcon";
+import { useAdminLocale } from "./AdminLocale";
 
-const navigationGroups = [
+type Item = { icon: string; ko: string; en: string; href: string };
+type Group = { ko: string; en: string; items: Item[] };
+
+const navigationGroups: Group[] = [
   {
-    label: "운영 현황",
+    ko: "COMMAND",
+    en: "COMMAND",
     items: [
-      ["🏠", "GY Command Center", "/admin"],
-      ["🛡️", "품질 검수센터", "/admin/quality-center"],
-      ["🎯", "게시 전략센터", "/admin/publishing-strategy"],
-      ["🏢", "AI Company OS", "/admin/company-os"],
-      ["🧠", "Dream Y 전략회의", "/admin/strategy-room"],
-      ["💬", "AI 운영 비서", "/admin/assistant"],
-      ["🧬", "Evolution Room", "/admin/evolution-room"],
-      ["🗃️", "회사 기억센터", "/admin/memory"],
-      ["📊", "클릭 통계", "/admin/analytics"],
-      ["💰", "매출 분석", "/admin/revenue"],
-      ["📈", "성장 인텔리전스", "/admin/growth"],
+      { icon: "command", ko: "GY 명령센터", en: "GY Command Center", href: "/admin" },
+      { icon: "shield", ko: "품질 검수센터", en: "Quality Control", href: "/admin/quality-center" },
+      { icon: "target", ko: "게시 전략센터", en: "Publishing Strategy", href: "/admin/publishing-strategy" },
+      { icon: "building", ko: "AI Company OS", en: "AI Company OS", href: "/admin/company-os" },
+      { icon: "brain", ko: "Dream Y 전략회의", en: "Dream Y Strategy", href: "/admin/strategy-room" },
+      { icon: "message", ko: "AI 운영 비서", en: "AI Operations Copilot", href: "/admin/assistant" },
+      { icon: "sparkles", ko: "Evolution Room", en: "Evolution Room", href: "/admin/evolution-room" },
+      { icon: "database", ko: "회사 기억센터", en: "Company Memory", href: "/admin/memory" },
+      { icon: "chart", ko: "클릭 통계", en: "Click Analytics", href: "/admin/analytics" },
+      { icon: "wallet", ko: "매출 분석", en: "Revenue Analytics", href: "/admin/revenue" },
+      { icon: "growth", ko: "성장 인텔리전스", en: "Growth Intelligence", href: "/admin/growth" },
     ],
   },
   {
-    label: "상품과 콘텐츠",
+    ko: "CONTENT",
+    en: "CONTENT",
     items: [
-      ["📦", "상품 관리", "/admin/products"],
-      ["➕", "상품 등록", "/admin/products/new"],
-      ["📥", "상품 자동 등록", "/admin/import"],
-      ["🏭", "AI 콘텐츠 공장", "/admin/content-factory"],
-      ["🎨", "Creative Studio", "/admin/creative-studio"],
-      ["🎬", "Creative Studio Pro", "/admin/creative-studio-pro"],
-      ["🧬", "Product DNA Engine", "/admin/product-dna"],
-      ["📈", "SEO Studio", "/admin/seo-studio"],
-      ["🤖", "AI 콘텐츠", "/admin/content"],
-      ["📚", "생성 이력", "/admin/content/history"],
+      { icon: "box", ko: "상품 관리", en: "Product Management", href: "/admin/products" },
+      { icon: "plus", ko: "상품 등록", en: "Add Product", href: "/admin/products/new" },
+      { icon: "download", ko: "상품 자동 등록", en: "Product Import", href: "/admin/import" },
+      { icon: "factory", ko: "AI 콘텐츠 공장", en: "AI Content Factory", href: "/admin/content-factory" },
+      { icon: "palette", ko: "Creative Studio", en: "Creative Studio", href: "/admin/creative-studio" },
+      { icon: "sparkles", ko: "Creative Studio Pro", en: "Creative Studio Pro", href: "/admin/creative-studio-pro" },
+      { icon: "dna", ko: "Product DNA Engine", en: "Product DNA Engine", href: "/admin/product-dna" },
+      { icon: "search", ko: "SEO Studio", en: "SEO Studio", href: "/admin/seo-studio" },
+      { icon: "bot", ko: "AI 콘텐츠", en: "AI Content", href: "/admin/content" },
+      { icon: "history", ko: "생성 이력", en: "Generation History", href: "/admin/content/history" },
     ],
   },
   {
-    label: "자동화",
+    ko: "AUTOMATION",
+    en: "AUTOMATION",
     items: [
-      ["🔥", "상품 기회 분석센터", "/admin/product-intelligence"],
-      ["🔎", "단일 상품 AI 분석", "/admin/trends"],
-      ["⚡", "원터치 자동화", "/admin/automation"],
-      ["🚀", "자동 게시", "/admin/publishing"],
-      ["▶️", "YouTube 업로드", "/admin/youtube"],
-      ["🗓️", "예약 생성", "/admin/schedules"],
+      { icon: "flame", ko: "상품 기회 분석센터", en: "Product Opportunity", href: "/admin/product-intelligence" },
+      { icon: "search", ko: "단일 상품 AI 분석", en: "Single Product AI", href: "/admin/trends" },
+      { icon: "zap", ko: "원터치 자동화", en: "One-touch Automation", href: "/admin/automation" },
+      { icon: "rocket", ko: "자동 게시", en: "Auto Publishing", href: "/admin/publishing" },
+      { icon: "play", ko: "YouTube 업로드", en: "YouTube Upload", href: "/admin/youtube" },
+      { icon: "calendar", ko: "예약 생성", en: "Scheduling", href: "/admin/schedules" },
     ],
   },
   {
-    label: "연결과 설정",
+    ko: "SYSTEM",
+    en: "SYSTEM",
     items: [
-      ["🎨", "GY Brand Center", "/admin/brand-center"],
-      ["🧭", "설치 마법사", "/admin/setup"],
-      ["🔗", "통합 연결센터", "/admin/connections"],
-      ["⚙️", "설정 안내", "/admin/settings"],
+      { icon: "palette", ko: "GY Brand Center", en: "GY Brand Center", href: "/admin/brand-center" },
+      { icon: "compass", ko: "설치 마법사", en: "Setup Wizard", href: "/admin/setup" },
+      { icon: "link", ko: "통합 연결센터", en: "Connection Center", href: "/admin/connections" },
+      { icon: "settings", ko: "설정 안내", en: "Settings", href: "/admin/settings" },
     ],
   },
-] as const;
+];
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/admin") return pathname === "/admin";
@@ -66,35 +75,38 @@ function isActivePath(pathname: string, href: string) {
 
 export default function AdminSidebar() {
   const pathname = usePathname();
+  const { locale, setLocale } = useAdminLocale();
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar premium-sidebar">
+      <div className="sidebar-ambient" aria-hidden="true" />
       <div className="sidebar-inner">
-        <Link href="/admin" className="brand admin-brand">
-          <span className="brand-mark">GY</span>
+        <Link href="/admin" className="brand admin-brand premium-brand">
+          <span className="brand-mark premium-brand-mark"><span>GY</span><i /></span>
           <span className="brand-copy">
             <strong>GY COMPANY OS</strong>
-            <small>FIRST RELEASE PRODUCTION · 1.0</small>
+            <small>PRODUCTION · 1.0</small>
           </span>
         </Link>
 
-        <nav className="side-nav" aria-label="관리자 메뉴">
-          {navigationGroups.map((group) => (
-            <section className="nav-group" key={group.label}>
-              <p className="nav-group-title">{group.label}</p>
-              <div className="nav-group-list">
-                {group.items.map(([icon, label, href]) => {
-                  const active = isActivePath(pathname, href);
+        <div className="locale-switcher" role="group" aria-label="Language selector">
+          <button type="button" className={locale === "ko" ? "active" : ""} onClick={() => setLocale("ko")}>KR</button>
+          <button type="button" className={locale === "en" ? "active" : ""} onClick={() => setLocale("en")}>EN</button>
+          <span aria-hidden="true" />
+        </div>
 
+        <nav className="side-nav premium-nav" aria-label={locale === "ko" ? "관리자 메뉴" : "Admin navigation"}>
+          {navigationGroups.map((group) => (
+            <section className="nav-group" key={group.en}>
+              <p className="nav-group-title">{locale === "ko" ? group.ko : group.en}</p>
+              <div className="nav-group-list">
+                {group.items.map((item) => {
+                  const active = isActivePath(pathname, item.href);
                   return (
-                    <Link
-                      key={href}
-                      href={href}
-                      className={active ? "active" : undefined}
-                      aria-current={active ? "page" : undefined}
-                    >
-                      <span className="nav-icon">{icon}</span>
-                      <span>{label}</span>
+                    <Link key={item.href} href={item.href} className={active ? "active" : undefined} aria-current={active ? "page" : undefined}>
+                      <span className="nav-icon"><GyIcon name={item.icon} /></span>
+                      <span className="nav-label">{locale === "ko" ? item.ko : item.en}</span>
+                      <span className="nav-arrow" aria-hidden="true">›</span>
                     </Link>
                   );
                 })}
@@ -103,12 +115,13 @@ export default function AdminSidebar() {
           ))}
         </nav>
 
-        <div className="sidebar-footer">
-          <span className="status-dot" />
+        <div className="sidebar-footer premium-system-card">
+          <span className="status-orbit"><i /></span>
           <div>
-            <strong>운영 시스템</strong>
-            <small>Dream Y Core 가동 중</small>
+            <strong>{locale === "ko" ? "운영 시스템 정상" : "System operational"}</strong>
+            <small>{locale === "ko" ? "Dream Y Core 가동 중" : "Dream Y Core is online"}</small>
           </div>
+          <span className="system-percent">99.9%</span>
         </div>
       </div>
     </aside>
