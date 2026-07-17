@@ -1,0 +1,17 @@
+GY-NEXUS AI COMPANY OS V2.0
+SPRINT 4 · CREATIVE STUDIO
+Version 2.0.4
+
+DELIVERY
+- Sprint 3 Content Factory 전체 포함
+- OpenAI 이미지 생성
+- Runway 텍스트/이미지 기반 영상 생성
+- Supabase creative-assets 저장소
+- creative_jobs 작업 이력
+- Creative Studio / Creative Studio Pro 관리자 통합
+- 전용 Supabase 마이그레이션 및 한국어 시작 안내
+
+IMPORTANT
+- 외부 API 키와 유료 크레딧은 ZIP에 포함되지 않습니다.
+- .env.local은 보안을 위해 포함하지 않습니다.
+- 적용 후 npm install 및 Supabase SQL 실행이 필요합니다.
