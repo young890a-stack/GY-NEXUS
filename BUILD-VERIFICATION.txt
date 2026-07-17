@@ -1,0 +1,13 @@
+GY-NEXUS AI Company OS v2.0 Sprint 1
+Verification date: 2026-07-17
+
+npm install: PASS
+next build: PASS
+TypeScript: PASS
+Static pages: 74/74
+New route: /admin/company-os-v2
+New API: /api/v2/pipeline/plan
+
+Important scope note:
+This Sprint starts the reliable pipeline with manual/verified product input and deterministic quality gates.
+Live Coupang/Temu collection, actual image generation, Blogger scheduling, and performance ingestion are not yet claimed as complete.

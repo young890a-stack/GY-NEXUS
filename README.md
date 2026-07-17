@@ -1,66 +1,54 @@
-# GY-NEXUS v3.0 ULTIMATE
+# GY-NEXUS AI Company OS v2.0
 
-AI 제휴마케팅 운영을 위한 실행형 Next.js 프로젝트입니다.
+**첫 번째 공식 운영 버전**을 위한 Next.js 기반 AI 제휴마케팅 Company OS입니다. 테스트용 화면 모음이 아니라, 상품 기회 탐색부터 콘텐츠 제작·검수·게시·성과 학습까지 하나의 운영 파이프라인으로 이어지는 구조를 목표로 합니다.
 
-## 포함 기능
-- AI 블로그, 15초 쇼츠, SEO·썸네일 프롬프트 패키지 생성
-- 상품 등록·수정·삭제 및 CSV 일괄 자동 등록
-- 제휴 링크 클릭 추적과 상품별 통계
-- AI 콘텐츠 Supabase 저장 및 생성 이력
-- 콘텐츠 예약 일정 관리
-- Supabase 이메일·비밀번호 관리자 로그인
-- 관리자 대시보드, 설정, 반응형 모바일 UI
+## 운영 파이프라인
 
-## 설치
-1. `1-처음설치.bat` 실행
-2. `.env.example`을 `.env.local`로 복사하고 키 입력
-3. Supabase SQL Editor에서 `supabase/schema.sql` 전체 실행
-4. Supabase Authentication > Users에서 관리자 계정 생성
-5. `2-서버실행.bat` 실행
-6. `http://localhost:3000/login` 접속
+1. Product Intelligence — 쿠팡·Temu 상품 후보 수집과 기회 점수화
+2. AI Decision — 추천 근거와 우선순위 제시
+3. Content Factory — 쇼핑 쇼츠·블로그·SEO·CTA 패키지 생성
+4. Creative Studio — 이미지·세로 영상 제작
+5. Quality Center — 게시 전 품질 검사
+6. Publishing Center — 채널별 게시·예약 작업 관리
+7. Growth & Revenue — 클릭·검색·성과 분석
+8. Learning & Executive AI — 운영 기록을 다음 추천에 반영
 
-## 환경변수
-```env
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5.5
+## 현재 시작 채널
+
+- 판매·제휴: Coupang, Temu
+- 콘텐츠·배포: Google Blogger, Naver, YouTube, Instagram
+- 확장 예정: Naver Shopping, AliExpress, Amazon, TikTok 등
+
+새 플랫폼은 핵심 코드를 다시 만들지 않고 Connector 모듈로 추가하는 것을 원칙으로 합니다.
+
+## Windows 시작
+
+1. `1-처음설치.bat`
+2. `.env.local`에 연결 키 입력
+3. Supabase SQL Editor에서 `supabase/schema.sql` 실행
+4. `2-서버실행.bat`
+5. `http://localhost:3000/admin/company-os-v2` 접속
+
+GitHub에 올리기 전에는 `3-운영검증.bat`을 실행합니다.
+
+## 명령어
+
+```bash
+npm ci
+npm run dev
+npm run check
 ```
 
-## 중요한 범위
-예약 기능은 일정과 상태를 관리합니다. 네이버·유튜브·인스타그램에 자동 발행하려면 각 플랫폼의 공식 API 승인과 별도 자격 증명이 필요합니다. 상품 자동 등록은 안전한 CSV 일괄 등록 방식입니다.
+## GitHub 운영 원칙
 
-## v5.2 외부 채널 연결
+- `main`: 검증을 통과한 운영 버전
+- `develop`: 다음 v2.x 통합 개발
+- `feature/*`: 커넥터·엔진 단위 작업
+- Pull Request마다 GitHub Actions가 lint와 production build를 검증
+- `.env.local`과 비밀키는 절대 커밋하지 않음
 
-### YouTube
-Google Cloud OAuth 웹 애플리케이션에 다음 URI를 등록합니다.
+## 중요한 현실적 범위
 
-- `http://localhost:3000/api/connections/youtube/callback`
+외부 플랫폼의 자동 게시·상품 수집 범위는 각 서비스의 공식 API, 계정 권한, 제휴 자격 및 승인 상태에 따라 달라집니다. API가 허용하지 않는 기능은 수동 승인·내보내기 흐름으로 안전하게 대체합니다.
 
-YouTube Data API v3를 활성화하고 `.env.local`에
-`YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `CONNECTION_ENCRYPTION_KEY`를 입력합니다.
-
-### Naver
-NAVER Developers 애플리케이션 Callback URL에 다음 URI를 등록합니다.
-
-- `http://localhost:3000/api/connections/naver/callback`
-
-`.env.local`에 `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`을 입력합니다.
-현재 공개 API 기준으로 네이버 블로그 자동 글쓰기는 지원하지 않으며 로그인/프로필 확인과 수동 발행 흐름을 제공합니다.
-
-### Coupang Partners
-파트너스 포털에서 발급한 Access Key와 Secret Key를 등록한 뒤 외부 채널 화면에서 실시간 API 테스트를 실행합니다.
-
-### Temu Affiliate
-Temu에서 제공한 제휴 ID와 실제 제휴 링크 형식을 `TEMU_AFFILIATE_LINK_TEMPLATE`에 등록합니다.
-템플릿에는 `{url}` 또는 `{product_url}` 자리표시자가 필요합니다.
-
-## GY-NEXUS Ultimate v7.0 · Dream Y
-
-v7.0은 기존 운영형 기반 위에 AI Company OS의 첫 실행 코어를 추가합니다.
-
-- `/admin/strategy-room`: Dream Y AI 전략회의실
-- `/admin/memory`: 회사 기억센터
-- `/admin/evolution-room`: AI 진화회의
-
-처음 적용할 때 Supabase SQL Editor에서 `supabase/schema.sql` 전체를 다시 실행하세요. `create table if not exists`와 `add column if not exists`를 사용하므로 기존 데이터는 유지됩니다.
+자세한 장기 구조는 `docs/GY-NEXUS-V2-MASTER-BLUEPRINT.md`를 참고하세요.

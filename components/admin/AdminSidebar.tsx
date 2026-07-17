@@ -16,7 +16,8 @@ const navigationGroups: Group[] = [
       { icon: "command", ko: "GY 명령센터", en: "GY Command Center", href: "/admin" },
       { icon: "shield", ko: "품질 검수센터", en: "Quality Control", href: "/admin/quality-center" },
       { icon: "target", ko: "게시 전략센터", en: "Publishing Strategy", href: "/admin/publishing-strategy" },
-      { icon: "building", ko: "AI Company OS", en: "AI Company OS", href: "/admin/company-os" },
+      { icon: "building", ko: "AI Company OS v2.0", en: "AI Company OS v2.0", href: "/admin/company-os-v2" },
+      { icon: "command", ko: "Company OS 1.0 보관", en: "Company OS 1.0 Archive", href: "/admin/company-os" },
       { icon: "brain", ko: "Dream Y 전략회의", en: "Dream Y Strategy", href: "/admin/strategy-room" },
       { icon: "message", ko: "AI 운영 비서", en: "AI Operations Copilot", href: "/admin/assistant" },
       { icon: "sparkles", ko: "Evolution Room", en: "Evolution Room", href: "/admin/evolution-room" },
@@ -85,7 +86,7 @@ export default function AdminSidebar() {
           <span className="brand-mark premium-brand-mark"><span>GY</span><i /></span>
           <span className="brand-copy">
             <strong>GY COMPANY OS</strong>
-            <small>PRODUCTION · 1.0</small>
+            <small>AI COMPANY OS · 2.0</small>
           </span>
         </Link>
 
