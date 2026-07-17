@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { VideoRequest } from "@/lib/creative-studio/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 800;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   let jobId: string | null = null;
