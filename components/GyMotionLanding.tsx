@@ -124,8 +124,9 @@ export default function GyMotionLanding({ supabaseReady, openAiReady }: Props) {
                 흩어진 업무를 하나의 고급스러운 운영 경험으로 연결합니다.
               </p>
               <div className="gy-actions">
-                <Link href="/admin" className="gy-button gy-button-primary gy-magnetic">GY 열기 <b>↗</b></Link>
-                <Link href="/admin/ai-factory" className="gy-button gy-button-ghost gy-magnetic">AI Factory 보기</Link>
+                <Link href="/admin" className="gy-button gy-button-primary gy-magnetic">AI 회사 시작하기 <b>↗</b></Link>
+                <Link href="/admin/revenue-dashboard" className="gy-button gy-button-ghost gy-magnetic">CEO Dashboard</Link>
+                <Link href="#platform-flow" className="gy-button gy-button-ghost gy-magnetic">플랫폼 기능 보기</Link>
               </div>
               <div className="gy-proof-row">
                 <span>Production-ready</span>
@@ -170,11 +171,18 @@ export default function GyMotionLanding({ supabaseReady, openAiReady }: Props) {
           </div>
         </section>
 
-        <section className="gy-section container">
+        <section id="platform-flow" className="gy-section gy-platform-section">
+          <div className="container gy-platform-inner">
           <div className="gy-section-heading" data-reveal>
             <span className="gy-kicker">GY PLATFORM</span>
             <h2>도구의 집합이 아니라,<br />하나의 완성된 흐름.</h2>
             <p>고객에게는 단순하고 인상적인 경험을, 운영에는 빠른 판단과 높은 품질을 제공합니다.</p>
+          </div>
+          <div className="gy-revenue-preview" data-reveal>
+            <div><span>LIVE EXECUTIVE PREVIEW</span><strong>₩2,150,000</strong><small>이번 달 예상 수익 · +18.7%</small></div>
+            <div><span>AI ADVISOR</span><strong>추천도 98</strong><small>Galaxy Tab 쇼츠 · 오늘 19:00</small></div>
+            <div><span>FORECAST</span><strong>₩2,680,000</strong><small>성장 시나리오 · 신뢰도 82%</small></div>
+            <Link href="/admin/revenue-dashboard">CEO Dashboard 열기 ↗</Link>
           </div>
           <div className="gy-capability-grid">
             {capabilities.map((item, index) => (
@@ -193,6 +201,7 @@ export default function GyMotionLanding({ supabaseReady, openAiReady }: Props) {
                 <Link href="/admin" aria-label={`${item.title} 열기`}>Explore <b>↗</b></Link>
               </article>
             ))}
+          </div>
           </div>
         </section>
 

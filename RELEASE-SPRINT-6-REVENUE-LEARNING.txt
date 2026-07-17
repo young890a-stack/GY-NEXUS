@@ -1,0 +1,11 @@
+Sprint 6: Revenue Dashboard + Learning Engine
+
+- Added executive revenue dashboard and channel KPI aggregation
+- Added normalized revenue event warehouse schema
+- Added learning rules, AI recommendations, and forecast snapshots
+- Added AI Advisor and Forecast Engine screens
+- Added database/demo graceful fallback
+- Redesigned landing platform section with corrected horizontal spacing
+- Added Revenue, Advisor, Forecast preview and three hero CTAs
+- Improved responsive layout, glass UI, gradients, and unified design system
+- Integrated Sprint 1-5 workflow into the executive intelligence layer
