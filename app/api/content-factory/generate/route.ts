@@ -21,6 +21,8 @@ export async function POST(request: Request) {
       targetAudience: body.targetAudience?.trim() || "20~40대",
       shortsDuration: [15, 20, 25, 30].includes(Number(body.shortsDuration)) ? Number(body.shortsDuration) as 15 | 20 | 25 | 30 : 20,
       tone: body.tone?.trim() || "신뢰감 있고 자연스러운 전문가형",
+      blogGoal: ["adsense", "adpost", "sales", "review"].includes(String(body.blogGoal)) ? body.blogGoal : "sales",
+      blogLength: body.blogLength === "long" ? "long" : "standard",
     };
 
     const result = await generateContentFactoryPackage(input);

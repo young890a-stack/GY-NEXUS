@@ -1,150 +1,44 @@
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ContentFactoryPackage } from "@/lib/content-factory/types";
 
-type Product = { id: string; title: string; description?: string | null; affiliate_url?: string | null; image_url?: string | null };
+type Product = { id:string; title:string; description?:string|null; affiliate_url?:string|null; image_url?:string|null };
+type Run = { id:string; product_title:string; output_data:ContentFactoryPackage; created_at:string };
+const fieldStyle = { width:"100%", marginTop:6 } as const;
+function Block({title,children}:{title:string;children:React.ReactNode}) { return <section className="panel" style={{padding:20,marginTop:16}}><h2 style={{marginTop:0}}>{title}</h2>{children}</section>; }
+function safeName(value:string){ return value.replace(/[\\/:*?"<>|]/g,"_"); }
 
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="panel" style={{ padding: 20, marginTop: 16 }}><h2 style={{ marginTop: 0 }}>{title}</h2>{children}</section>;
-}
-
-export default function ContentFactory() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [productId, setProductId] = useState("");
-  const [manualTitle, setManualTitle] = useState("");
-  const [manualDescription, setManualDescription] = useState("");
-  const [targetAudience, setTargetAudience] = useState("20~40대");
-  const [duration, setDuration] = useState<15 | 20 | 25 | 30>(20);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<ContentFactoryPackage | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const supabase = createClient();
-        const { data, error } = await supabase.from("products").select("id,title,description,affiliate_url,image_url").order("created_at", { ascending: false });
-        if (error) throw error;
-        const list = (data || []) as Product[];
-        setProducts(list);
-        if (list[0]) setProductId(list[0].id);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "상품 목록을 불러오지 못했습니다.");
-      }
-    })();
-  }, []);
-
-  const product = useMemo(() => products.find((item) => item.id === productId), [products, productId]);
-
-  async function runFactory() {
-    const title = product?.title || manualTitle.trim();
-    if (!title) { setError("상품을 선택하거나 상품명을 입력해주세요."); return; }
-    setLoading(true); setError(""); setMessage(""); setResult(null);
-    try {
-      const response = await fetch("/api/content-factory/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId: product?.id,
-          title,
-          description: product?.description || manualDescription,
-          affiliateUrl: product?.affiliate_url || "",
-          imageUrl: product?.image_url || "",
-          targetAudience,
-          shortsDuration: duration,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.message || "콘텐츠 생성에 실패했습니다.");
-      setResult(data.result);
-      setMessage(data.message || "완료되었습니다.");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "콘텐츠 공장 실행에 실패했습니다.");
-    } finally { setLoading(false); }
-  }
-
-  async function copy(text: string, label: string) {
-    await navigator.clipboard.writeText(text);
-    setMessage(`${label} 복사 완료`);
-  }
-
-  function downloadSrt() {
-    if (!result) return;
-    const blob = new Blob([result.subtitles.srt], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `${result.packageTitle.replace(/[\\/:*?"<>|]/g, "_")}.srt`; a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  return <div>
-    <section className="panel" style={{ padding: 22 }}>
-      <div className="eyebrow">SPRINT 3 · CONTENT FACTORY</div>
-      <h1 style={{ marginBottom: 8 }}>AI 콘텐츠 공장</h1>
-      <p style={{ marginTop: 0 }}>상품 하나로 블로그, 쇼츠, 썸네일·이미지 프롬프트, 영상 프롬프트, 검수 자막과 SRT를 한 번에 생성합니다.</p>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, marginTop: 18 }}>
-        <label>등록 상품
-          <select value={productId} onChange={(e) => setProductId(e.target.value)} style={{ width: "100%", marginTop: 6 }}>
-            <option value="">직접 입력</option>
-            {products.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-          </select>
-        </label>
-        <label>타깃
-          <input value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} style={{ width: "100%", marginTop: 6 }} />
-        </label>
-        <label>쇼츠 길이
-          <select value={duration} onChange={(e) => setDuration(Number(e.target.value) as 15 | 20 | 25 | 30)} style={{ width: "100%", marginTop: 6 }}>
-            {[15,20,25,30].map((v) => <option key={v} value={v}>{v}초</option>)}
-          </select>
-        </label>
-      </div>
-
-      {!product && <div style={{ marginTop: 14 }}>
-        <label>상품명<input value={manualTitle} onChange={(e) => setManualTitle(e.target.value)} style={{ width: "100%", marginTop: 6 }} /></label>
-        <label style={{ display: "block", marginTop: 10 }}>상품 설명<textarea value={manualDescription} onChange={(e) => setManualDescription(e.target.value)} rows={5} style={{ width: "100%", marginTop: 6 }} /></label>
-      </div>}
-
-      <button className="button button-primary" onClick={runFactory} disabled={loading} style={{ marginTop: 18 }}>
-        {loading ? "AI 직원들이 제작 중..." : "콘텐츠 패키지 한 번에 생성"}
-      </button>
-      {message && <p style={{ color: "#15803d" }}>{message}</p>}
-      {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
-    </section>
-
-    {result && <>
-      <Block title={`📌 ${result.packageTitle}`}>
-        <p><b>타깃:</b> {result.positioning.targetAudience}</p><p><b>핵심 문제:</b> {result.positioning.coreProblem}</p><p><b>핵심 혜택:</b> {result.positioning.coreBenefit}</p><p><b>추천 각도:</b> {result.positioning.recommendedAngle}</p>
-      </Block>
-      <Block title="📝 블로그 완성본">
-        <h3>{result.blog.seoTitle}</h3><p><b>메타 설명:</b> {result.blog.metaDescription}</p>
-        <textarea readOnly value={result.blog.body} rows={22} style={{ width: "100%" }} />
-        <p>{result.blog.disclosure}</p><p>{result.blog.hashtags.join(" ")}</p>
-        <button className="button button-light" onClick={() => copy(`${result.blog.seoTitle}\n\n${result.blog.body}\n\n${result.blog.disclosure}\n\n${result.blog.hashtags.join(" ")}`, "블로그")}>블로그 전체 복사</button>
-      </Block>
-      <Block title="🎬 쇼츠 제작 패키지">
-        <h3>{result.shorts.title}</h3><p><b>훅:</b> {result.shorts.hook}</p><p><b>전체 음성:</b> {result.shorts.voiceover}</p>
-        <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th>시간</th><th>화면</th><th>내레이션</th><th>자막</th></tr></thead><tbody>{result.shorts.scenes.map((s, i) => <tr key={i}><td>{s.start}~{s.end}초</td><td>{s.visual}</td><td>{s.narration}</td><td>{s.subtitle}</td></tr>)}</tbody></table></div>
-        <p><b>설명:</b> {result.shorts.description}</p><p>{result.shorts.hashtags.join(" ")}</p>
-        <button className="button button-light" onClick={() => copy(result.shorts.voiceover, "쇼츠 대본")}>쇼츠 대본 복사</button>
-      </Block>
-      <Block title="🎨 이미지·썸네일·영상 프롬프트">
-        <p><b>썸네일 문구:</b> {result.creative.thumbnailCopy.join(" / ")}</p>
-        <h3>썸네일 프롬프트</h3><textarea readOnly value={result.creative.thumbnailPrompt} rows={6} style={{ width: "100%" }} />
-        <h3>블로그 이미지 3종</h3>{result.creative.blogImagePrompts.map((p, i) => <textarea key={i} readOnly value={p} rows={4} style={{ width: "100%", marginBottom: 8 }} />)}
-        <h3>9:16 영상 통합 프롬프트</h3><textarea readOnly value={result.creative.verticalVideoPrompt} rows={8} style={{ width: "100%" }} />
-        <button className="button button-light" onClick={() => copy(result.creative.verticalVideoPrompt, "영상 프롬프트")}>영상 프롬프트 복사</button>
-      </Block>
-      <Block title="💬 정확한 한국어 자막 패키지">
-        <textarea readOnly value={result.subtitles.srt} rows={14} style={{ width: "100%" }} />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button className="button button-light" onClick={() => copy(result.subtitles.srt, "SRT")}>SRT 복사</button><button className="button button-primary" onClick={downloadSrt}>SRT 다운로드</button></div>
-      </Block>
-      <Block title="🛡️ 품질·정책 검사">
-        <h3>피해야 할 표현</h3><ul>{result.compliance.claimsToAvoid.map((v, i) => <li key={i}>{v}</li>)}</ul><h3>최종 체크리스트</h3><ul>{result.compliance.finalChecklist.map((v, i) => <li key={i}>✅ {v}</li>)}</ul>
-      </Block>
-    </>}
-  </div>;
+export default function ContentFactory(){
+ const [products,setProducts]=useState<Product[]>([]); const [runs,setRuns]=useState<Run[]>([]); const [productId,setProductId]=useState("");
+ const [manualTitle,setManualTitle]=useState(""); const [manualDescription,setManualDescription]=useState(""); const [targetAudience,setTargetAudience]=useState("20~40대");
+ const [duration,setDuration]=useState<15|20|25|30>(20); const [tone,setTone]=useState("신뢰감 있고 자연스러운 전문가형");
+ const [blogGoal,setBlogGoal]=useState("sales"); const [blogLength,setBlogLength]=useState("standard"); const [loading,setLoading]=useState(false);
+ const [message,setMessage]=useState(""); const [error,setError]=useState(""); const [result,setResult]=useState<ContentFactoryPackage|null>(null);
+ const loadHistory=async()=>{ try{const r=await fetch('/api/content-factory/history',{cache:'no-store'}); const d=await r.json(); if(d.success)setRuns(d.runs);}catch{} };
+ useEffect(()=>{(async()=>{try{const supabase=createClient();const {data,error}=await supabase.from('products').select('id,title,description,affiliate_url,image_url').order('created_at',{ascending:false});if(error)throw error;const list=(data||[]) as Product[];setProducts(list);if(list[0])setProductId(list[0].id);}catch(e){setError(e instanceof Error?e.message:'상품 목록을 불러오지 못했습니다.');}})();loadHistory();},[]);
+ const product=useMemo(()=>products.find(v=>v.id===productId),[products,productId]);
+ async function runFactory(){const title=product?.title||manualTitle.trim();if(!title){setError('상품을 선택하거나 상품명을 입력해주세요.');return;}setLoading(true);setError('');setMessage('');
+  try{const response=await fetch('/api/content-factory/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId:product?.id,title,description:product?.description||manualDescription,affiliateUrl:product?.affiliate_url||'',imageUrl:product?.image_url||'',targetAudience,shortsDuration:duration,tone,blogGoal,blogLength})});const data=await response.json();if(!response.ok||!data.success)throw new Error(data.message||'콘텐츠 생성 실패');setResult(data.result);setMessage(data.message||'완료');await loadHistory();}catch(e){setError(e instanceof Error?e.message:'콘텐츠 공장 실행 실패');}finally{setLoading(false);}}
+ async function copy(text:string,label:string){await navigator.clipboard.writeText(text);setMessage(`${label} 복사 완료`);} 
+ function download(name:string,text:string,type='text/plain'){const b=new Blob([text],{type:`${type};charset=utf-8`});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
+ function packageMarkdown(r:ContentFactoryPackage){return `# ${r.packageTitle}\n\n## 블로그\n### ${r.blog.seoTitle}\n${r.blog.metaDescription}\n\n${r.blog.body}\n\n${r.blog.cta}\n\n${r.blog.disclosure}\n\n${r.blog.hashtags.join(' ')}\n\n## 쇼츠\n### ${r.shorts.title}\n훅: ${r.shorts.hook}\n\n${r.shorts.voiceover}\n\n고정댓글: ${r.shorts.pinnedComment}\n\n## 썸네일 프롬프트\n${r.creative.thumbnailPrompt}\n\n## 1:1 프롬프트\n${r.creative.squareThumbnailPrompt}\n\n## SEO\n주요 키워드: ${r.seo.primaryKeyword}\n보조 키워드: ${r.seo.secondaryKeywords.join(', ')}\n슬러그: ${r.seo.slug}`;}
+ return <div><section className="panel" style={{padding:22}}><div className="eyebrow">GY-NEXUS v2.0 · SPRINT 3</div><h1 style={{marginBottom:8}}>Content Factory</h1><p style={{marginTop:0}}>승인 상품 하나로 블로그, 쇼츠, 썸네일, SEO, 정확한 한국어 SRT를 한 번에 생산하고 저장합니다.</p>
+ <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:12,marginTop:18}}>
+ <label>등록 상품<select value={productId} onChange={e=>setProductId(e.target.value)} style={fieldStyle}><option value="">직접 입력</option>{products.map(v=><option key={v.id} value={v.id}>{v.title}</option>)}</select></label>
+ <label>블로그 목적<select value={blogGoal} onChange={e=>setBlogGoal(e.target.value)} style={fieldStyle}><option value="sales">제휴 판매형</option><option value="adsense">Google AdSense 정보형</option><option value="adpost">Naver AdPost 정보형</option><option value="review">제품 리뷰형</option></select></label>
+ <label>원고 길이<select value={blogLength} onChange={e=>setBlogLength(e.target.value)} style={fieldStyle}><option value="standard">표준 1,800~2,500자</option><option value="long">장문 2,800~3,500자</option></select></label>
+ <label>쇼츠 길이<select value={duration} onChange={e=>setDuration(Number(e.target.value) as 15|20|25|30)} style={fieldStyle}>{[15,20,25,30].map(v=><option key={v}>{v}초</option>)}</select></label>
+ <label>타깃<input value={targetAudience} onChange={e=>setTargetAudience(e.target.value)} style={fieldStyle}/></label><label>톤<select value={tone} onChange={e=>setTone(e.target.value)} style={fieldStyle}><option>신뢰감 있고 자연스러운 전문가형</option><option>친근하고 재미있는 생활 밀착형</option><option>감성적인 프리미엄 스토리형</option><option>빠르고 강한 쇼핑 전환형</option></select></label></div>
+ {!product&&<div style={{marginTop:14}}><label>상품명<input value={manualTitle} onChange={e=>setManualTitle(e.target.value)} style={fieldStyle}/></label><label style={{display:'block',marginTop:10}}>상품 설명<textarea value={manualDescription} onChange={e=>setManualDescription(e.target.value)} rows={5} style={fieldStyle}/></label></div>}
+ <button className="button button-primary" onClick={runFactory} disabled={loading} style={{marginTop:18}}>{loading?'AI 직원들이 제작·검수 중...':'블로그·쇼츠·썸네일 패키지 생성'}</button>{message&&<p style={{color:'#15803d'}}>{message}</p>}{error&&<p style={{color:'#b91c1c'}}>{error}</p>}</section>
+ {runs.length>0&&<Block title="🕘 최근 제작 이력"><div style={{display:'grid',gap:8}}>{runs.slice(0,6).map(run=><button key={run.id} className="button button-light" style={{textAlign:'left'}} onClick={()=>{setResult(run.output_data);setMessage(`${run.product_title} 패키지를 불러왔습니다.`)}}>{run.product_title} · {new Date(run.created_at).toLocaleString('ko-KR')}</button>)}</div></Block>}
+ {result&&<><Block title={`📌 ${result.packageTitle}`}><p><b>타깃:</b> {result.positioning.targetAudience}</p><p><b>핵심 문제:</b> {result.positioning.coreProblem}</p><p><b>핵심 혜택:</b> {result.positioning.coreBenefit}</p><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className="button button-primary" onClick={()=>download(`${safeName(result.packageTitle)}.md`,packageMarkdown(result),'text/markdown')}>전체 패키지 MD 다운로드</button><button className="button button-light" onClick={()=>download(`${safeName(result.packageTitle)}.json`,JSON.stringify(result,null,2),'application/json')}>JSON 다운로드</button></div></Block>
+ <Block title="📝 블로그 완성본"><h3>{result.blog.seoTitle}</h3><p><b>메타:</b> {result.blog.metaDescription}</p><p><b>목차:</b> {result.blog.outline.join(' · ')}</p><textarea readOnly value={result.blog.body} rows={24} style={fieldStyle}/><p><b>CTA:</b> {result.blog.cta}</p><p>{result.blog.disclosure}</p><p>{result.blog.hashtags.join(' ')}</p><button className="button button-light" onClick={()=>copy(`${result.blog.seoTitle}\n\n${result.blog.body}\n\n${result.blog.cta}\n\n${result.blog.disclosure}\n\n${result.blog.hashtags.join(' ')}`,'블로그')}>블로그 전체 복사</button></Block>
+ <Block title="🎬 쇼츠 제작 패키지"><h3>{result.shorts.title}</h3><p><b>훅:</b> {result.shorts.hook}</p><p><b>전체 음성:</b> {result.shorts.voiceover}</p><div style={{overflowX:'auto'}}><table style={{width:'100%'}}><thead><tr><th>시간</th><th>화면</th><th>내레이션</th><th>자막</th></tr></thead><tbody>{result.shorts.scenes.map((s,i)=><tr key={i}><td>{s.start}~{s.end}초</td><td>{s.visual}</td><td>{s.narration}</td><td>{s.subtitle}</td></tr>)}</tbody></table></div><p><b>고정댓글:</b> {result.shorts.pinnedComment}</p><button className="button button-light" onClick={()=>copy(result.shorts.voiceover,'쇼츠 대본')}>대본 복사</button></Block>
+ <Block title="🎨 썸네일·이미지 프롬프트"><p><b>문구:</b> {result.creative.thumbnailCopy.join(' / ')}</p><h3>16:9</h3><textarea readOnly value={result.creative.thumbnailPrompt} rows={6} style={fieldStyle}/><h3>1:1</h3><textarea readOnly value={result.creative.squareThumbnailPrompt} rows={6} style={fieldStyle}/>{result.creative.blogImagePrompts.map((p,i)=><textarea key={i} readOnly value={p} rows={4} style={{...fieldStyle,marginBottom:8}}/>)}<h3>9:16 영상</h3><textarea readOnly value={result.creative.verticalVideoPrompt} rows={7} style={fieldStyle}/></Block>
+ <Block title="🔎 SEO 패키지"><p><b>주요 키워드:</b> {result.seo.primaryKeyword}</p><p><b>보조 키워드:</b> {result.seo.secondaryKeywords.join(', ')}</p><p><b>슬러그:</b> {result.seo.slug}</p>{result.seo.faq.map((f,i)=><div key={i}><b>Q. {f.question}</b><p>A. {f.answer}</p></div>)}</Block>
+ <Block title="💬 정확한 한국어 자막"><textarea readOnly value={result.subtitles.srt} rows={14} style={fieldStyle}/><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className="button button-light" onClick={()=>copy(result.subtitles.srt,'SRT')}>SRT 복사</button><button className="button button-primary" onClick={()=>download(`${safeName(result.packageTitle)}.srt`,result.subtitles.srt)}>SRT 다운로드</button></div></Block>
+ <Block title="🛡️ 품질 검사"><ul>{result.compliance.claimsToAvoid.map((v,i)=><li key={i}>주의: {v}</li>)}</ul><ul>{result.compliance.finalChecklist.map((v,i)=><li key={i}>✅ {v}</li>)}</ul></Block></>}
+ </div>;
 }
