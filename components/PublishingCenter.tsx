@@ -43,7 +43,7 @@ function localDateTimeValue(date = new Date()) {
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
 }
 
-export default function PublishingCenter({ initialJobs, contents, databaseReady = true }: { initialJobs: PublishingJob[]; contents: ContentItem[]; databaseReady?: boolean }) {
+export default function PublishingCenter({ initialJobs, contents }: { initialJobs: PublishingJob[]; contents: ContentItem[] }) {
   const [jobs, setJobs] = useState(initialJobs);
   const [channel, setChannel] = useState("blogger");
   const [sourceId, setSourceId] = useState("");
@@ -53,7 +53,6 @@ export default function PublishingCenter({ initialJobs, contents, databaseReady 
   const [isDraft, setIsDraft] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [strategy, setStrategy] = useState("approval");
 
   const selectedSource = useMemo(() => contents.find((item) => item.id === sourceId), [contents, sourceId]);
 
@@ -133,61 +132,22 @@ export default function PublishingCenter({ initialJobs, contents, databaseReady 
     await refreshJobs();
   }
 
-  const queuedCount = jobs.filter((job) => ["queued", "retry"].includes(job.status)).length;
-  const publishedCount = jobs.filter((job) => job.status === "published").length;
-  const failedCount = jobs.filter((job) => ["retry", "cancelled"].includes(job.status)).length;
-
   return (
-    <div className="admin-page publishing-command-center">
-      <section className="publishing-hero">
+    <div className="admin-page">
+      <div className="admin-top">
         <div>
-          <span className="dashboard-kicker">GY BUILD 05 · PUBLISHING CENTER</span>
-          <h1>콘텐츠를 결과로 연결하는<br />GY Publishing.</h1>
-          <p>승인용 글과 성장형 SEO 콘텐츠를 분리하고, 검수된 결과물만 채널별 초안·예약·게시 흐름으로 보냅니다.</p>
-          <div className="publishing-hero-actions">
-            <button className="button button-primary" disabled={loading || !databaseReady} onClick={runQueue}>대기 작업 지금 실행</button>
-            <a className="button button-light" href="/admin/connections">채널 연결 확인</a>
-          </div>
+          <span className="eyebrow">SPRINT 5 · ONE-CLICK PUBLISHER</span>
+          <h1>원클릭 게시센터</h1>
+          <p>저장된 AI 콘텐츠를 Blogger·WordPress·자동화 웹훅으로 예약하고 게시합니다.</p>
         </div>
-        <div className="publishing-live-card">
-          <div className="publishing-live-head"><span>GY PUBLISHING LIVE</span><b><i /> READY</b></div>
-          <div className="publishing-live-metrics">
-            <div><small>Queue</small><strong>{queuedCount}</strong></div>
-            <div><small>Published</small><strong>{publishedCount}</strong></div>
-            <div><small>Attention</small><strong>{failedCount}</strong></div>
-          </div>
-          <p>{databaseReady ? "Supabase 게시 대기함이 연결되어 있습니다." : "Supabase 연결 후 실제 예약·게시 작업을 사용할 수 있습니다."}</p>
-        </div>
-      </section>
+        <button className="button button-primary" disabled={loading} onClick={runQueue}>지금 게시 실행</button>
+      </div>
 
-      <section className="publishing-strategy-row" aria-label="게시 전략 선택">
-        {[
-          ["approval", "승인 중심", "AdSense·AdPost 심사에 맞춘 정보성, 독창성, 신뢰성 중심"],
-          ["seo", "SEO 성장", "검색 의도, 제목 CTR, 내부 구조와 장기 유입 중심"],
-          ["commerce", "쇼핑 전환", "상품 가치와 사용 장면을 살리되 과장 없이 전환 중심"],
-          ["dual", "동시 생성", "같은 주제를 플랫폼별로 다르게 작성해 중복 위험 최소화"],
-        ].map(([id, title, text]) => (
-          <button type="button" key={id} onClick={() => setStrategy(id)} className={`publishing-strategy-chip ${strategy === id ? "active" : ""}`}>
-            <span>{strategy === id ? "✓" : "+"}</span><strong>{title}</strong><small>{text}</small>
-          </button>
-        ))}
-      </section>
+      {message && <div className="alert alert-warning" style={{ marginBottom: 18 }}>{message}</div>}
 
-      {!databaseReady && (
-        <div className="alert alert-warning publishing-alert">게시센터 화면은 정상입니다. 실제 대기함·예약·게시 기능은 Supabase 연결 및 마이그레이션 후 활성화됩니다.</div>
-      )}
-      {message && <div className="alert alert-warning publishing-alert">{message}</div>}
-
-      <section className="publishing-channel-grid">
-        <article><span className="channel-status connected" /><div><strong>Blogger</strong><small>공식 OAuth · 초안 및 게시</small></div><a href="/admin/connections">설정</a></article>
-        <article><span className="channel-status" /><div><strong>Naver</strong><small>승인·SEO 원고 복사 발행</small></div><a href="/admin/publishing-strategy">전략</a></article>
-        <article><span className="channel-status" /><div><strong>YouTube</strong><small>완성 MP4 공식 업로드</small></div><a href="/admin/youtube">열기</a></article>
-        <article><span className="channel-status" /><div><strong>Automation</strong><small>Make · Zapier · n8n 웹훅</small></div><a href="/admin/automation">열기</a></article>
-      </section>
-
-      <div className="publishing-workspace">
-        <section className="panel publishing-composer">
-          <div className="publishing-panel-title"><div><span className="panel-kicker">COMPOSE & SCHEDULE</span><h2>새 게시 작업</h2></div><span className="publishing-mode-badge">{strategy.toUpperCase()}</span></div>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.5fr) minmax(320px, .7fr)", gap: 20, alignItems: "start" }}>
+        <section className="panel">
+          <h2>새 게시 작업</h2>
           <div className="form-grid" style={{ marginTop: 18 }}>
             <label className="field">
               <span>게시 채널</span>
@@ -204,45 +164,69 @@ export default function PublishingCenter({ initialJobs, contents, databaseReady 
                 {contents.map((item) => <option key={item.id} value={item.id}>{item.title} · {item.product_title}</option>)}
               </select>
             </label>
-            <label className="field field-full"><span>게시 제목</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="게시 제목" /></label>
-            <label className="field field-full"><span>게시 본문</span><textarea rows={14} value={content} onChange={(event) => setContent(event.target.value)} placeholder="검수된 콘텐츠를 입력하거나 불러오세요." /></label>
-            <label className="field"><span>게시 예약 시간</span><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /></label>
-            {channel === "blogger" && <label className="field"><span>Blogger 방식</span><span className="publishing-check"><input type="checkbox" checked={isDraft} onChange={(event) => setIsDraft(event.target.checked)} /> 초안으로 저장</span></label>}
+            <label className="field field-full">
+              <span>게시 제목</span>
+              <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="게시 제목" />
+            </label>
+            <label className="field field-full">
+              <span>게시 본문</span>
+              <textarea rows={14} value={content} onChange={(event) => setContent(event.target.value)} placeholder="게시할 본문을 입력하세요." />
+            </label>
+            <label className="field">
+              <span>게시 예약 시간</span>
+              <input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} />
+            </label>
+            {channel === "blogger" && (
+              <label className="field" style={{ justifyContent: "end" }}>
+                <span>Blogger 게시 방식</span>
+                <span style={{ display: "flex", gap: 8, alignItems: "center", minHeight: 44 }}>
+                  <input type="checkbox" checked={isDraft} onChange={(event) => setIsDraft(event.target.checked)} /> 초안으로 저장
+                </span>
+              </label>
+            )}
           </div>
-          <button className="button button-primary" disabled={loading || !databaseReady || !title.trim() || !content.trim()} onClick={createJob}>게시 대기함에 추가</button>
+          <button className="button button-primary" disabled={loading || !title.trim() || !content.trim()} onClick={createJob}>게시 대기함에 추가</button>
         </section>
 
-        <aside className="panel publishing-quality-gate">
-          <span className="panel-kicker">QUALITY GATE</span><h2>게시 전 최종 확인</h2>
-          <div className="quality-check-list">
-            <div><i className={title.trim() ? "done" : ""} />제목과 검색 의도</div>
-            <div><i className={content.length > 300 ? "done" : ""} />본문 충분성</div>
-            <div><i className={strategy ? "done" : ""} />게시 목적 분리</div>
-            <div><i className={channel ? "done" : ""} />채널 선택</div>
+        <section className="panel">
+          <h2>연결 안내</h2>
+          <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+            <div className="alert alert-info"><b>Blogger</b><br />외부 채널 연결센터에서 Blogger OAuth를 연결하면 공식 API로 게시합니다.</div>
+            <div className="alert alert-info"><b>WordPress</b><br />.env.local에 WORDPRESS_URL, WORDPRESS_USERNAME, WORDPRESS_APP_PASSWORD를 입력합니다.</div>
+            <div className="alert alert-info"><b>네이버 블로그</b><br />공식 글쓰기 API가 제공되지 않아 자동 게시 대신 콘텐츠 복사·수동 발행 흐름을 유지합니다.</div>
+            <div className="alert alert-info"><b>YouTube Shorts</b><br />왼쪽 YouTube 메뉴의 공식 업로더에서 완성 MP4를 올릴 수 있습니다.</div>
           </div>
-          <p>GY Quality Center에서 사실성·SEO·브랜드 검사를 완료한 콘텐츠만 게시 대기함에 넣는 것을 권장합니다.</p>
-          <a className="gy-text-link" href="/admin/quality-center">GY Quality 열기 ↗</a>
-        </aside>
+        </section>
       </div>
 
-      <section className="panel publishing-queue-panel">
-        <div className="publishing-panel-title"><div><span className="panel-kicker">PUBLISHING QUEUE</span><h2>게시 대기함</h2><p>예약 시간이 지난 작업만 실행됩니다.</p></div><button className="button button-light" onClick={refreshJobs} disabled={!databaseReady}>새로고침</button></div>
+      <section className="panel" style={{ marginTop: 20 }}>
+        <div className="admin-top" style={{ marginBottom: 12 }}>
+          <div><h2>게시 대기함</h2><p>예약 시간이 지난 작업만 ‘지금 게시 실행’에서 처리됩니다.</p></div>
+          <button className="button button-light" onClick={refreshJobs}>새로고침</button>
+        </div>
         <div className="table-wrap">
           <table>
             <thead><tr><th>채널</th><th>제목</th><th>상태</th><th>예약</th><th>시도</th><th>결과</th><th>관리</th></tr></thead>
             <tbody>
               {jobs.length ? jobs.map((job) => (
                 <tr key={job.id}>
-                  <td><span className="channel-pill">{channelLabel[job.channel] || job.channel}</span></td><td><b>{job.title}</b></td><td>{statusLabel[job.status] || job.status}</td><td>{new Date(job.scheduled_at).toLocaleString("ko-KR")}</td><td>{job.attempts || 0}</td>
+                  <td>{channelLabel[job.channel] || job.channel}</td>
+                  <td><b>{job.title}</b></td>
+                  <td>{statusLabel[job.status] || job.status}</td>
+                  <td>{new Date(job.scheduled_at).toLocaleString("ko-KR")}</td>
+                  <td>{job.attempts || 0}</td>
                   <td>{job.payload?.resultUrl ? <a href={job.payload.resultUrl} target="_blank" rel="noreferrer">열기</a> : job.last_error || "-"}</td>
-                  <td className="publishing-row-actions">{(job.status === "retry" || job.status === "cancelled") && <button className="button button-light" onClick={() => changeJob(job.id, "retry")}>재시도</button>}{!["published", "cancelled"].includes(job.status) && <button className="button button-light" onClick={() => changeJob(job.id, "cancel")}>취소</button>}<button className="button button-light" onClick={() => deleteJob(job.id)}>삭제</button></td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {(job.status === "retry" || job.status === "cancelled") && <button className="button button-light" onClick={() => changeJob(job.id, "retry")}>재시도</button>}
+                    {!["published", "cancelled"].includes(job.status) && <button className="button button-light" onClick={() => changeJob(job.id, "cancel")}>취소</button>}
+                    <button className="button button-light" onClick={() => deleteJob(job.id)}>삭제</button>
+                  </td>
                 </tr>
-              )) : <tr><td colSpan={7}><div className="empty">아직 등록된 게시 작업이 없습니다.</div></td></tr>}
+              )) : <tr><td colSpan={7}>등록된 게시 작업이 없습니다.</td></tr>}
             </tbody>
           </table>
         </div>
       </section>
     </div>
   );
-
 }
