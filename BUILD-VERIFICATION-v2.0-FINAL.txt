@@ -1,0 +1,12 @@
+GY-NEXUS AI COMPANY OS v2.0 FINAL — Verification
+
+PASS  npm install
+PASS  npm run release:check
+PASS  npm run typecheck
+PASS  npm run lint (0 errors, 9 non-blocking warnings)
+PARTIAL npm run build
+        Next.js optimized production build started normally, but the sandbox
+        execution limit expired before Next.js printed its final completion message.
+        Run npm run build once on the deployment computer before release.
+
+The ZIP archive integrity was checked after packaging.

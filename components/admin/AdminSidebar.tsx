@@ -66,6 +66,7 @@ const navigationGroups: Group[] = [
       { icon: "palette", ko: "GY Brand Center", en: "GY Brand Center", href: "/admin/brand-center" },
       { icon: "compass", ko: "설치 마법사", en: "Setup Wizard", href: "/admin/setup" },
       { icon: "link", ko: "통합 연결센터", en: "Connection Center", href: "/admin/connections" },
+      { icon: "shield", ko: "운영 상태", en: "System Status", href: "/admin/system-status" },
       { icon: "settings", ko: "설정 안내", en: "Settings", href: "/admin/settings" },
     ],
   },
