@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "수집할 상품 후보가 없습니다." }, { status: 400 });
     }
 
-    const sourceName = String(body.sourceName || "sprint7_collector").trim().slice(0, 80) || "sprint7_collector";
+    const sourceName = String(body.sourceName || "sprint2_collector").trim().slice(0, 80) || "sprint2_collector";
     const now = new Date().toISOString();
     const rows = items.map((item, index) => {
       const title = String(item.title || "").trim();
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
         caution: opportunity.risks.join(" "),
         analyzed_at: now,
         collected_at: now,
-        raw_data: { sprint: 7, category: item.category || null, keyword: item.keyword || null, opportunity, input: item },
+        raw_data: { sprint: 2, category: item.category || null, keyword: item.keyword || null, opportunity, input: item },
       };
     });
 
