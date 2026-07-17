@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateCreativeVideo } from "@/lib/creative-studio/video";
 export const runtime = "nodejs";
-export const maxDuration = 800;
+export const maxDuration = 300;
 export async function POST(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
