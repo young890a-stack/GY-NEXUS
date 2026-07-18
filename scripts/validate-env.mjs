@@ -10,7 +10,7 @@ const text = fs.readFileSync(file, "utf8");
 const values = Object.fromEntries(text.split(/\r?\n/).filter((line) => line && !line.trim().startsWith("#") && line.includes("=")).map((line) => {
   const i = line.indexOf("="); return [line.slice(0, i).trim(), line.slice(i + 1).trim()];
 }));
-const required = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"];
+const required = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "OWNER_EMAIL"];
 const missing = required.filter((key) => !values[key]);
 if (missing.length) {
   console.error(`[FAIL] 필수 환경변수 누락: ${missing.join(", ")}`);

@@ -13,4 +13,4 @@ Database
 Run: supabase/BUILD-03-CUSTOMER-PLATFORM.sql
 
 Owner security
-Set OWNER_EMAIL in .env.local to restrict /admin to the single owner account.
+Set OWNER_EMAIL in .env.local. /admin and admin APIs deny access when it is missing or does not match the signed-in user.

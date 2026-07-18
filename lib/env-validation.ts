@@ -12,6 +12,7 @@ export function getEnvironmentStatus(): EnvItem[] {
   return [
     { key: "NEXT_PUBLIC_SUPABASE_URL", label: "Supabase URL", group: "core", required: true, configured: exists("NEXT_PUBLIC_SUPABASE_URL") },
     { key: "NEXT_PUBLIC_SUPABASE_ANON_KEY", label: "Supabase Anon Key", group: "core", required: true, configured: exists("NEXT_PUBLIC_SUPABASE_ANON_KEY") },
+    { key: "OWNER_EMAIL", label: "Owner Email", group: "core", required: true, configured: exists("OWNER_EMAIL") },
     { key: "SUPABASE_SERVICE_ROLE_KEY", label: "Supabase Service Role", group: "core", required: false, configured: exists("SUPABASE_SERVICE_ROLE_KEY") },
     { key: "OPENAI_API_KEY", label: "OpenAI API", group: "ai", required: false, configured: exists("OPENAI_API_KEY") },
     { key: "GOOGLE_AI_API_KEY", label: "Google AI / Gemini", group: "ai", required: false, configured: exists("GOOGLE_AI_API_KEY") },
