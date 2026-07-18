@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { calculateOpportunity } from "@/lib/product-intelligence/opportunity";
 
 type Candidate = {
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       };
     });
 
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase.from("trend_products").upsert(rows, { onConflict: "source_name,affiliate_url" }).select("*");
     if (error) throw error;
     return NextResponse.json({ success: true, inserted: data?.length || 0, items: data || [] });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 function parseCsv(text: string) {
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const { csv } = await request.json();
     const rows = parseCsv(String(csv || "")).filter((row) => row.title && row.affiliate_url);
     if (!rows.length) return NextResponse.json({ message: "등록할 상품이 없습니다." }, { status: 400 });
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { error } = await supabase.from("products").insert(rows);
     if (error) throw error;
     return NextResponse.json({ count: rows.length });

@@ -68,6 +68,10 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(memberUrl);
   }
 
+  if (isApiRequest && pathname.startsWith("/api/member/")) {
+    return response;
+  }
+
   if (isApiRequest && !isOwner(user)) {
     return NextResponse.json({ error: "대표 계정만 사용할 수 있는 기능입니다." }, { status: 403 });
   }

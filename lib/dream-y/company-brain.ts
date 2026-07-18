@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { DREAM_AGENTS } from "./agents";
+import { reviewStrategyWithGemini } from "@/lib/ai/gemini";
 
 export type StrategyResult = {
   executiveSummary: string;
@@ -10,6 +11,13 @@ export type StrategyResult = {
   missions: { title: string; owner: string; priority: "high" | "medium" | "low"; action: string; approvalRequired: boolean }[];
   risks: string[];
   successMetrics: string[];
+  verification: {
+    provider: "gemini" | "none";
+    status: "verified" | "revision_required" | "hold" | "skipped" | "error";
+    score: number | null;
+    summary: string;
+    corrections: string[];
+  };
 };
 
 const fallback = (command: string): StrategyResult => ({
@@ -26,19 +34,51 @@ const fallback = (command: string): StrategyResult => ({
   ],
   risks: ["외부 플랫폼 정책과 API 권한을 확인해야 합니다.", "예상 수익은 보장값이 아니며 실제 성과 데이터로 보정해야 합니다."],
   successMetrics: ["콘텐츠 완성률", "게시 성공률", "클릭률", "상품별 실제 수익"],
+  verification: { provider: "none", status: "skipped", score: null, summary: "Gemini 교차검증이 설정되지 않았습니다.", corrections: [] },
 });
 
 export async function runCompanyBrain(command: string, memories: string[]): Promise<StrategyResult> {
-  if (!process.env.OPENAI_API_KEY) return fallback(command);
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const prompt = `당신은 GY-NEXUS AI Company OS의 총괄 설계자 Dream Y다.\n대표 명령: ${command}\n회사 기억: ${memories.join(" | ") || "없음"}\nAI 직원: ${DREAM_AGENTS.map(a => `${a.id}:${a.role}`).join(", ")}\n반드시 실행 가능한 JSON만 반환한다. 형식: {"executiveSummary":"", "objective":"", "decision":"", "confidence":0, "agentOpinions":[{"agentId":"ethan","opinion":"","score":0}], "missions":[{"title":"","owner":"noah","priority":"high","action":"/admin/trends","approvalRequired":false}], "risks":[""], "successMetrics":[""]}. 과장된 수익 보장 금지. 공식 API와 정책 범위를 존중한다.`;
+  let result = fallback(command);
+
+  if (process.env.OPENAI_API_KEY) {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const prompt = `당신은 GY-NEXUS AI Company OS의 총괄 설계자 Dream Y다.\n대표 명령: ${command}\n회사 기억: ${memories.join(" | ") || "없음"}\nAI 직원: ${DREAM_AGENTS.filter(a => a.id !== "gemini").map(a => `${a.id}:${a.role}`).join(", ")}\n반드시 실행 가능한 JSON만 반환한다. 형식: {"executiveSummary":"", "objective":"", "decision":"", "confidence":0, "agentOpinions":[{"agentId":"ethan","opinion":"","score":0}], "missions":[{"title":"","owner":"noah","priority":"high","action":"/admin/trends","approvalRequired":false}], "risks":[""], "successMetrics":[""]}. 과장된 수익 보장 금지. 공식 API와 정책 범위를 존중한다.`;
+    try {
+      const response = await openai.responses.create({
+        model: process.env.OPENAI_STRATEGY_MODEL || process.env.OPENAI_MODEL || "gpt-5.6-terra",
+        input: prompt,
+      });
+      const raw = response.output_text?.trim() || "";
+      const json = raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+      result = { ...result, ...JSON.parse(json), verification: result.verification } as StrategyResult;
+    } catch (error) {
+      console.error("Company Brain fallback:", error);
+    }
+  }
+
   try {
-    const response = await openai.responses.create({ model: process.env.OPENAI_MODEL || "gpt-5.5", input: prompt });
-    const raw = response.output_text?.trim() || "";
-    const json = raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-    return JSON.parse(json) as StrategyResult;
+    const review = await reviewStrategyWithGemini({ command, strategy: result });
+    if (!review) return result;
+    return {
+      ...result,
+      agentOpinions: [
+        ...result.agentOpinions.filter((op) => op.agentId !== "gemini"),
+        { agentId: "gemini", opinion: review.summary, score: review.score },
+      ],
+      risks: Array.from(new Set([...result.risks, ...review.risks])).slice(0, 12),
+      verification: {
+        provider: "gemini",
+        status: review.recommendation === "approve" ? "verified" : review.recommendation === "hold" ? "hold" : "revision_required",
+        score: review.score,
+        summary: review.summary,
+        corrections: review.corrections,
+      },
+    };
   } catch (error) {
-    console.error("Company Brain fallback:", error);
-    return fallback(command);
+    console.error("Gemini review failed:", error);
+    return {
+      ...result,
+      verification: { provider: "gemini", status: "error", score: null, summary: "Gemini 교차검증 중 오류가 발생했습니다.", corrections: [] },
+    };
   }
 }

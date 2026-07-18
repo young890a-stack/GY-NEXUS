@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateContentFactoryPackage } from "@/lib/content-factory/generate";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { FactoryInput } from "@/lib/content-factory/types";
 
 export const runtime = "nodejs";
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     let runId: string | null = null;
 
     try {
-      const supabase = await createClient();
+      const supabase = createAdminClient();
       const { data, error } = await supabase.from("content_factory_runs").insert({
         product_id: input.productId || null,
         product_title: input.title,

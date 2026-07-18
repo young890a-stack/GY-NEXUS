@@ -1,10 +1,10 @@
 import TrendEngine from "@/components/trends/TrendEngine";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
 export default async function TrendsPage() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("trend_products")
     .select("*")

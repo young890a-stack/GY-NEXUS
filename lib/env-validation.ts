@@ -7,15 +7,16 @@ export type EnvItem = {
 };
 
 const exists = (key: string) => Boolean(process.env[key]?.trim());
+const existsAny = (...keys: string[]) => keys.some(exists);
 
 export function getEnvironmentStatus(): EnvItem[] {
   return [
     { key: "NEXT_PUBLIC_SUPABASE_URL", label: "Supabase URL", group: "core", required: true, configured: exists("NEXT_PUBLIC_SUPABASE_URL") },
     { key: "NEXT_PUBLIC_SUPABASE_ANON_KEY", label: "Supabase Anon Key", group: "core", required: true, configured: exists("NEXT_PUBLIC_SUPABASE_ANON_KEY") },
     { key: "OWNER_EMAIL", label: "Owner Email", group: "core", required: true, configured: exists("OWNER_EMAIL") },
-    { key: "SUPABASE_SERVICE_ROLE_KEY", label: "Supabase Service Role", group: "core", required: false, configured: exists("SUPABASE_SERVICE_ROLE_KEY") },
+    { key: "SUPABASE_SERVICE_ROLE_KEY", label: "Supabase Service Role", group: "core", required: true, configured: existsAny("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEY") },
     { key: "OPENAI_API_KEY", label: "OpenAI API", group: "ai", required: false, configured: exists("OPENAI_API_KEY") },
-    { key: "GOOGLE_AI_API_KEY", label: "Google AI / Gemini", group: "ai", required: false, configured: exists("GOOGLE_AI_API_KEY") },
+    { key: "GEMINI_API_KEY", label: "Gemini 독립 검토", group: "ai", required: false, configured: existsAny("GEMINI_API_KEY", "GOOGLE_AI_API_KEY") },
     { key: "YOUTUBE_CLIENT_ID", label: "YouTube OAuth Client", group: "publish", required: false, configured: exists("YOUTUBE_CLIENT_ID") },
     { key: "YOUTUBE_CLIENT_SECRET", label: "YouTube OAuth Secret", group: "publish", required: false, configured: exists("YOUTUBE_CLIENT_SECRET") },
     { key: "BLOGGER_BLOG_ID", label: "Blogger Blog ID", group: "publish", required: false, configured: exists("BLOGGER_BLOG_ID") },

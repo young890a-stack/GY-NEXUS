@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { AutomationConfig } from "@/lib/automation/engine";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const [{ data: jobs, error: jobsError }, { data: logs, error: logsError }] = await Promise.all([
       supabase.from("automation_jobs").select("*, products(title)").order("created_at", { ascending: false }).limit(50),
       supabase.from("automation_job_logs").select("*").order("created_at", { ascending: false }).limit(100),
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "YouTube 자동 업로드를 사용하려면 영상 생성을 켜주세요." }, { status: 400 });
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase.from("automation_jobs").insert({
       product_id: body.productId || null,
       status: "queued",
@@ -75,7 +75,7 @@ export async function PATCH(request: NextRequest) {
     const body = (await request.json()) as { id?: string; action?: "retry" | "cancel" };
     const id = String(body.id || "").trim();
     if (!id) return NextResponse.json({ success: false, message: "작업 ID가 없습니다." }, { status: 400 });
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const update = body.action === "retry"
       ? { status: "retry", current_step: "retry", last_error: null, scheduled_at: new Date().toISOString(), updated_at: new Date().toISOString() }
       : { status: "cancelled", current_step: "cancelled", updated_at: new Date().toISOString() };

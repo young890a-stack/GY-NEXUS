@@ -1,10 +1,10 @@
 import ProductIntelligenceControlCenter from "@/components/product-intelligence/ProductIntelligenceControlCenter";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProductIntelligencePage() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("trend_products")
     .select("id,title,platform,ai_score,opportunity_grade,opportunity_recommendation,status,price_text,affiliate_url,ai_summary,shorts_hook,caution,collected_at")

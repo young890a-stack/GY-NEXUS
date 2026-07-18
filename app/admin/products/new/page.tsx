@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 
 export default function NewProductPage() {
   const router = useRouter();
@@ -30,9 +29,13 @@ export default function NewProductPage() {
         throw new Error("상품명과 제휴 링크는 필수입니다.");
       }
 
-      const supabase = createClient();
-      const { error } = await supabase.from("products").insert(payload);
-      if (error) throw error;
+      const response = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) throw new Error(data.message || "상품 등록에 실패했습니다.");
 
       router.push("/admin/products");
       router.refresh();

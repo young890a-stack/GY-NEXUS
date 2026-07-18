@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(request: NextRequest) {
   const fallback = new URL("/products", request.url);
   try {
     const id = request.nextUrl.searchParams.get("id");
     if (!id) return NextResponse.redirect(fallback);
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data: product, error } = await supabase.from("products").select("id,affiliate_url").eq("id", id).single();
     if (error || !product?.affiliate_url) return NextResponse.redirect(fallback);
     const { error: clickError } = await supabase.from("product_clicks").insert({ product_id: id });

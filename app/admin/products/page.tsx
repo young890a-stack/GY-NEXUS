@@ -1,7 +1,7 @@
 import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import { hasSupabaseEnv } from "@/lib/env";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { Product } from "@/types/product";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export default async function AdminProductsPage() {
 
   if (hasSupabaseEnv()) {
     try {
-      const supabase = await createClient();
+      const supabase = createAdminClient();
       const { data, error } = await supabase
         .from("products")
         .select("*,product_clicks(id,created_at)")

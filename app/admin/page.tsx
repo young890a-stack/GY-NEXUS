@@ -1,6 +1,7 @@
 import { hasOpenAIEnv, hasSupabaseEnv } from "@/lib/env";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import OperatingCenter from "./OperatingCenter";
+import { isGeminiConfigured } from "@/lib/ai/gemini";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ function hasEnv(name: string) {
 export default async function AdminDashboard() {
   const supabaseReady = hasSupabaseEnv();
   const openAiReady = hasOpenAIEnv();
-  const geminiReady = hasEnv("GEMINI_API_KEY");
+  const geminiReady = isGeminiConfigured();
 
   const services = [
     { name: "OpenAI", ready: openAiReady, detail: openAiReady ? "AI generation ready" : "API key required" },
@@ -20,7 +21,7 @@ export default async function AdminDashboard() {
     { name: "YouTube", ready: hasEnv("YOUTUBE_CLIENT_ID") && hasEnv("YOUTUBE_CLIENT_SECRET"), detail: "OAuth publishing" },
     { name: "Blogger", ready: hasEnv("BLOGGER_CLIENT_ID") || hasEnv("GOOGLE_CLIENT_ID"), detail: "Google publishing" },
     { name: "Naver", ready: hasEnv("NAVER_ACCESS_TOKEN"), detail: "Content channel" },
-    { name: "Gemini", ready: geminiReady, detail: "Secondary AI model" },
+    { name: "Gemini", ready: geminiReady, detail: geminiReady ? "Independent strategy reviewer" : "Review API key required" },
     { name: "Coupang", ready: hasEnv("COUPANG_ACCESS_KEY"), detail: "Affiliate commerce" },
     { name: "Temu", ready: hasEnv("TEMU_APP_KEY"), detail: "Affiliate commerce" },
   ];
@@ -33,7 +34,7 @@ export default async function AdminDashboard() {
 
   if (supabaseReady) {
     try {
-      const supabase = await createClient();
+      const supabase = createAdminClient();
       const [{ data: products, error: productError }, contentResult] = await Promise.all([
         supabase.from("products").select("id,title,product_clicks(id)").order("created_at", { ascending: false }),
         supabase.from("ai_contents").select("id", { count: "exact", head: true }),

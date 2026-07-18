@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { processAutomationJob } from "@/lib/automation/engine";
 import { CONNECTION_COOKIE_OPTIONS, decryptConnectionValue, encryptConnectionValue } from "@/lib/connections/secure-cookie";
 import type { OAuthToken } from "@/lib/connections/types";
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json().catch(() => ({}))) as { jobId?: string; limit?: number };
     const limit = Math.min(5, Math.max(1, Number(body.limit || 1)));
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     let query = supabase
       .from("automation_jobs")
       .select("*")

@@ -1,9 +1,9 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
 export default async function AnalyticsPage() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: products } = await supabase.from("products").select("id,title,platform,product_clicks(id,created_at)");
   const rows = (products ?? []).map((product) => ({
     id: product.id,

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { analyzeProduct } from "@/lib/ai/analyze-product";
 import { extractProductFromUrl } from "@/lib/products/url-extractor";
 
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
       },
     };
 
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("trend_products")
       .upsert(row, { onConflict: "source_name,affiliate_url" })

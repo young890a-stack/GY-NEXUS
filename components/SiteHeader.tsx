@@ -32,6 +32,7 @@ export default function SiteHeader() {
         <nav className="nav gy-public-nav" aria-label="주요 메뉴">
           <Link href="/discover">Content</Link>
           <Link href="/products">Products</Link>
+          <Link href="/pricing">Plans</Link>
           <Link href="/member">My GY</Link>
           {owner && <Link href="/admin/ai-factory">AI Factory</Link>}
           {owner && <Link href="/admin" className="gy-nav-cta">Open GY <b>↗</b></Link>}

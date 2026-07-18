@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type Decision = "approved" | "held" | "rejected";
 
@@ -12,7 +12,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "상품과 처리 상태를 확인해주세요." }, { status: 400 });
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data: item, error: readError } = await supabase.from("trend_products").select("*").eq("id", id).single();
     if (readError) throw readError;
 

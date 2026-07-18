@@ -1,10 +1,10 @@
 import AutomationEngine from "@/components/automation/AutomationEngine";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
 export default async function AutomationPage() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const [{ data: products }, { data: jobs }, { data: logs }] = await Promise.all([
     supabase.from("products").select("id,title").order("created_at", { ascending: false }).limit(100),
     supabase.from("automation_jobs").select("*, products(title)").order("created_at", { ascending: false }).limit(50),

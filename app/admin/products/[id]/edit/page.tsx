@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import DeleteProductButton from "@/app/admin/products/DeleteProductButton";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   let product;
 
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase.from("products").select("*").eq("id", id).single();
     if (error || !data) notFound();
     product = data;
@@ -21,7 +21,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
 
   async function updateProduct(formData: FormData) {
     "use server";
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const payload = {
       title: String(formData.get("title") || "").trim(),
       description: String(formData.get("description") || "").trim(),

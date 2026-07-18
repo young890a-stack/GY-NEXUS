@@ -13,6 +13,7 @@
     "release:check": "node scripts/release-check.mjs"
   },
   "dependencies": {
+    "@google/genai": "^2.12.0",
     "@runwayml/sdk": "^4.9.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.110.0",

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 
 type ContentKind = "blog" | "shorts" | "bundle";
 
@@ -79,21 +78,15 @@ export default function AdminContentPage() {
     setErrorMessage("");
 
     try {
-      const supabase = createClient();
+      const response = await fetch("/api/products", { cache: "no-store" });
+      const data = (await response.json().catch(() => ({}))) as {
+        products?: Product[];
+        message?: string;
+      };
+      if (!response.ok) throw new Error(data.message || "상품 목록 요청에 실패했습니다.");
 
-      const { data, error } = await supabase
-        .from("products")
-        .select(
-          "id, title, description, image_url, affiliate_url, created_at"
-        )
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      const productList: Product[] = Array.isArray(data)
-        ? (data as Product[])
+      const productList: Product[] = Array.isArray(data.products)
+        ? data.products
         : [];
 
       setProducts(productList);

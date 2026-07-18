@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { publishToWebhook, publishToWordPress } from "@/lib/publishing/publish";
 import { publishToBlogger } from "@/lib/publishing/blogger";
 import { publishVideoToYouTube } from "@/lib/publishing/youtube";
@@ -10,7 +10,7 @@ type PublishResult = { success: boolean; externalId?: string; url?: string; mess
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({})); const limit = Math.min(20, Math.max(1, Number(body.limit || 10)));
-    const supabase = await createClient(); const { data: jobs, error } = await supabase.from("publishing_jobs").select("*").in("status", ["queued", "retry"]).lte("scheduled_at", new Date().toISOString()).order("scheduled_at").limit(limit); if (error) throw error;
+    const supabase = createAdminClient(); const { data: jobs, error } = await supabase.from("publishing_jobs").select("*").in("status", ["queued", "retry"]).lte("scheduled_at", new Date().toISOString()).order("scheduled_at").limit(limit); if (error) throw error;
     let bloggerToken = decryptConnectionValue<OAuthToken>(request.cookies.get("gy_blogger_token")?.value);
     let youtubeToken = decryptConnectionValue<OAuthToken>(request.cookies.get("gy_youtube_token")?.value);
     let refreshedBloggerToken: OAuthToken | undefined; let refreshedYoutubeToken: OAuthToken | undefined;

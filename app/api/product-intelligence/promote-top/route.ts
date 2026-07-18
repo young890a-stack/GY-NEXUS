@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { minimumScore?: number; limit?: number };
     const minimumScore = Math.max(0, Math.min(100, Number(body.minimumScore ?? 75)));
     const limit = Math.max(1, Math.min(30, Number(body.limit ?? 10)));
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data: candidates, error } = await supabase
       .from("trend_products")
       .select("*")

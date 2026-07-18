@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const items = Array.isArray(body.items) ? body.items : [];
     if (!items.length) return NextResponse.json({ success: false, message: "매출 데이터가 없습니다." }, { status: 400 });
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const rows = items.map((item: Record<string, unknown>) => ({
       product_id: item.product_id || null,
       platform: String(item.platform || "etc"),

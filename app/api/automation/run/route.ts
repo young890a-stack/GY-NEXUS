@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // 이전 버전의 원터치 버튼 호환용: Sprint 6 작업 큐에 새 작업을 등록합니다.
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const config = {
       generateImage: true,
       generateVideo: Boolean(body.generateVideo),
