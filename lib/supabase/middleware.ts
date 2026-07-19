@@ -10,6 +10,9 @@ const PUBLIC_API_PATHS = new Set([
 
 function isPublicApi(pathname: string) {
   if (PUBLIC_API_PATHS.has(pathname)) return true;
+  if (/^\/api\/connections\/(youtube|blogger|naver)\/callback$/.test(pathname)) return true;
+  if (/^\/api\/auth\/(youtube|blogger|naver)\/callback$/.test(pathname)) return true;
+  if (pathname === "/api/search-console/callback" || pathname === "/api/connections/google/callback") return true;
   return /^\/api\/creative-studio-pro\/projects\/[^/]+\/render-callback$/.test(pathname);
 }
 

@@ -1,16 +1,21 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  connectionResultUrl,
+  getGoogleCredentials,
+  getOAuthRedirectUri,
+} from "@/lib/connections/oauth-config";
 
 export async function GET(request: NextRequest) {
-  const clientId = (process.env.BLOGGER_CLIENT_ID || process.env.YOUTUBE_CLIENT_ID)?.trim();
-  if (!clientId) {
-    return NextResponse.redirect(new URL("/admin/connections?error=blogger_config", request.url));
+  const credentials = getGoogleCredentials("blogger");
+  if (!credentials) {
+    return NextResponse.redirect(connectionResultUrl(request, "blogger", "error", "config"));
   }
 
   const state = crypto.randomBytes(24).toString("hex");
-  const redirectUri = `${request.nextUrl.origin}/api/connections/blogger/callback`;
+  const redirectUri = getOAuthRedirectUri("blogger", request);
   const params = new URLSearchParams({
-    client_id: clientId,
+    client_id: credentials.clientId,
     redirect_uri: redirectUri,
     response_type: "code",
     access_type: "offline",

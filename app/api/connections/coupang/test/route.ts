@@ -57,11 +57,19 @@ export async function POST() {
       );
     }
 
-    return NextResponse.json({
+    const success = NextResponse.json({
       success: true,
       message: "쿠팡 파트너스 API 서명 인증과 상품 검색 요청이 성공했습니다.",
       sample: data,
     });
+    success.cookies.set("gy_coupang_verified", "1", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 180,
+    });
+    return success;
   } catch (error) {
     return NextResponse.json(
       {

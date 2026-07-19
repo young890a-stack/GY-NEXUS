@@ -1,24 +1,12 @@
 import type { OAuthToken } from "@/lib/connections/types";
+import { getGoogleCredentials } from "@/lib/connections/oauth-config";
 
 export const GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 
 function credentials() {
-  const clientId = (
-    process.env.GOOGLE_CLIENT_ID ||
-    process.env.SEARCH_CONSOLE_CLIENT_ID ||
-    process.env.BLOGGER_CLIENT_ID ||
-    process.env.YOUTUBE_CLIENT_ID
-  )?.trim();
-  const clientSecret = (
-    process.env.GOOGLE_CLIENT_SECRET ||
-    process.env.SEARCH_CONSOLE_CLIENT_SECRET ||
-    process.env.BLOGGER_CLIENT_SECRET ||
-    process.env.YOUTUBE_CLIENT_SECRET
-  )?.trim();
-  if (!clientId || !clientSecret) {
-    throw new Error("Google OAuth Client ID/Secret이 없습니다.");
-  }
-  return { clientId, clientSecret };
+  const pair = getGoogleCredentials("search-console");
+  if (!pair) throw new Error("Google OAuth Client ID/Secret이 없습니다.");
+  return pair;
 }
 
 export async function getGoogleAccessToken(token: OAuthToken): Promise<string> {

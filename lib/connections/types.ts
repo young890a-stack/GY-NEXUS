@@ -7,7 +7,13 @@ export type OAuthToken = {
   created_at: number;
 };
 
-export type ConnectionId = "youtube" | "blogger" | "naver" | "temu";
+export type ConnectionId =
+  | "youtube"
+  | "blogger"
+  | "naver"
+  | "search-console"
+  | "coupang"
+  | "temu";
 
 export type ConnectionState = {
   id: ConnectionId;

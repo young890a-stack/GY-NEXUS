@@ -1,21 +1,25 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { SEARCH_CONSOLE_SCOPE } from "@/lib/search-console/client";
 import { GA4_SCOPE } from "@/lib/analytics/ga4";
+import {
+  connectionResultUrl,
+  getGoogleCredentials,
+  getOAuthRedirectUri,
+} from "@/lib/connections/oauth-config";
+import { SEARCH_CONSOLE_SCOPE } from "@/lib/search-console/client";
 
 export async function GET(request: NextRequest) {
-  const clientId = (
-    process.env.GOOGLE_CLIENT_ID ||
-    process.env.SEARCH_CONSOLE_CLIENT_ID ||
-    process.env.BLOGGER_CLIENT_ID ||
-    process.env.YOUTUBE_CLIENT_ID
-  )?.trim();
-  if (!clientId) return NextResponse.redirect(new URL("/admin/growth?error=google_config", request.url));
+  const credentials = getGoogleCredentials("search-console");
+  if (!credentials) {
+    return NextResponse.redirect(
+      connectionResultUrl(request, "search-console", "error", "config"),
+    );
+  }
 
   const state = crypto.randomBytes(24).toString("hex");
-  const redirectUri = `${request.nextUrl.origin}/api/search-console/callback`;
+  const redirectUri = getOAuthRedirectUri("search-console", request);
   const params = new URLSearchParams({
-    client_id: clientId,
+    client_id: credentials.clientId,
     redirect_uri: redirectUri,
     response_type: "code",
     access_type: "offline",

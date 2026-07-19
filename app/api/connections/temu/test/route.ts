@@ -32,12 +32,20 @@ export async function POST() {
 
   try {
     const parsed = new URL(generated);
-    return NextResponse.json({
+    const success = NextResponse.json({
       success: true,
       message: "Temu 제휴 링크 템플릿 검증이 완료되었습니다.",
       sampleUrl: parsed.toString(),
       mode: "affiliate-link",
     });
+    success.cookies.set("gy_temu_verified", "1", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 180,
+    });
+    return success;
   } catch {
     return NextResponse.json(
       { success: false, message: "생성된 Temu 링크 형식이 올바르지 않습니다." },

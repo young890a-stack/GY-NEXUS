@@ -1,17 +1,22 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  connectionResultUrl,
+  getNaverCredentials,
+  getOAuthRedirectUri,
+} from "@/lib/connections/oauth-config";
 
 export async function GET(request: NextRequest) {
-  const clientId = process.env.NAVER_CLIENT_ID?.trim();
-  if (!clientId) {
-    return NextResponse.redirect(new URL("/admin/connections?error=naver_config", request.url));
+  const credentials = getNaverCredentials();
+  if (!credentials) {
+    return NextResponse.redirect(connectionResultUrl(request, "naver", "error", "config"));
   }
 
   const state = crypto.randomBytes(24).toString("hex");
-  const redirectUri = `${request.nextUrl.origin}/api/connections/naver/callback`;
+  const redirectUri = getOAuthRedirectUri("naver", request);
   const params = new URLSearchParams({
     response_type: "code",
-    client_id: clientId,
+    client_id: credentials.clientId,
     redirect_uri: redirectUri,
     state,
   });

@@ -1,11 +1,20 @@
 import crypto from "node:crypto";
 
 function getKey(): Buffer {
-  const raw = process.env.CONNECTION_ENCRYPTION_KEY?.trim();
-  if (!raw) {
-    throw new Error("CONNECTION_ENCRYPTION_KEY가 설정되지 않았습니다.");
+  const explicit = process.env.CONNECTION_ENCRYPTION_KEY?.trim();
+  if (explicit) return crypto.createHash("sha256").update(explicit).digest();
+  const fallback = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!fallback) {
+    throw new Error("연동 토큰 암호화에 필요한 서버 비밀키가 없습니다.");
   }
-  return crypto.createHash("sha256").update(raw).digest();
+  return crypto.createHash("sha256").update(`GY-NEXUS-CONNECTION-V1:${fallback}`).digest();
+}
+
+export function connectionEncryptionReady() {
+  return Boolean(
+    process.env.CONNECTION_ENCRYPTION_KEY?.trim() ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim(),
+  );
 }
 
 export function encryptConnectionValue(value: unknown): string {

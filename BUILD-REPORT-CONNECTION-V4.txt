@@ -1,0 +1,37 @@
+GY-NEXUS · UNIFIED CONNECTION CENTER V4
+Build date: 2026-07-19
+
+[해결한 핵심 문제]
+- Vercel Preview/복제 도메인에서 시작하면 callback 주소가 바뀌던 문제 제거
+- NEXT_PUBLIC_SITE_URL 또는 서비스별 REDIRECT_URI를 start/callback 양쪽에서 동일하게 사용
+- YouTube, Blogger, Naver, Search Console OAuth Client ID/Secret 쌍 선택 방식 통일
+- 외부 OAuth callback을 로그인 미들웨어에서 막던 문제 수정
+- callback은 공개하되 OAuth state 검증으로 위조 요청 차단
+- 예전 callback 경로 4개를 호환 라우트로 추가해 404 방지
+- 승인 후 토큰 암호화 키 누락으로 실패하던 문제 보완
+- Search Console 성공/실패 복귀 위치를 통합 연결센터로 통일
+- 연결 실패 이유를 config/denied/provider/state/token/storage로 구분
+- Coupang API 및 Temu 링크 검증 성공 상태 표시 추가
+
+[추가된 운영 기능]
+- /admin/connections 통합 연결 진단 UI
+- /api/connections/diagnostics 비밀값 비노출 진단 API
+- 운영 콜백 주소 개별 복사 및 전체 복사
+- YouTube/Blogger/Naver/Search Console 실제 권한 상태 확인
+- Coupang/Temu 연결 테스트
+- Windows 한글 경로 대응 Vercel 환경변수 자동 설정 스크립트 복구
+- 네 개 Redirect URI 자동 추가·수정
+
+[검증 결과]
+- TypeScript: 오류 0개
+- ESLint: 오류 0개, 기존 이미지 최적화/미사용 인덱스 경고 7개
+- Next.js 16.2.10 production build: 성공
+- 빌드 라우트 목록에서 표준 callback 4개 및 호환 callback 4개 생성 확인
+- vercel:setup --dry-run --production-only: 성공
+
+[외부에서 한 번 필요한 작업]
+- Google Cloud / Naver Developers에 화면에 표시되는 callback 주소 등록
+- 실제 Client ID/Secret 및 계정 권한 승인
+
+실제 외부 계정 연결은 대표님의 비밀키와 승인 및 외부 서비스 상태가 필요하므로
+이 빌드 환경에서는 비용·권한이 발생하는 실계정 OAuth를 실행하지 않았습니다.
