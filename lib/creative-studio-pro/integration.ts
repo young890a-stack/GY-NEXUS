@@ -273,7 +273,28 @@ function decodeMetadataText(value: string) {
     .trim();
 }
 
-async function publicReferenceMetadata(url: string) {
+async function fetchAllowedReferencePage(initialUrl: URL, allowedDomains: string[]) {
+  let current = initialUrl;
+  for (let redirectCount = 0; redirectCount <= 3; redirectCount += 1) {
+    const hostname = current.hostname.toLowerCase();
+    if (current.protocol !== "https:" || !allowedDomains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))) {
+      throw new Error("허용되지 않은 참고자료 리디렉션입니다.");
+    }
+    const response = await fetch(current, {
+      signal: AbortSignal.timeout(5000),
+      cache: "no-store",
+      redirect: "manual",
+      headers: { "User-Agent": "GY-NEXUS-Metadata/2.2" },
+    });
+    if (response.status < 300 || response.status >= 400) return response;
+    const location = response.headers.get("location");
+    if (!location) return response;
+    current = new URL(location, current);
+  }
+  throw new Error("참고자료 리디렉션이 너무 많습니다.");
+}
+
+export async function publicReferenceMetadata(url: string) {
   try {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
@@ -292,12 +313,7 @@ async function publicReferenceMetadata(url: string) {
     }
     const allowedDomains = ["douyin.com", "xiaohongshu.com", "xhslink.com", "coupang.com", "temu.com", "temu.to"];
     if (!allowedDomains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))) return null;
-    const response = await fetch(parsed, {
-      signal: AbortSignal.timeout(5000),
-      cache: "no-store",
-      redirect: "follow",
-      headers: { "User-Agent": "GY-NEXUS-Metadata/2.0" },
-    });
+    const response = await fetchAllowedReferencePage(parsed, allowedDomains);
     if (!response.ok) return null;
     const length = Number(response.headers.get("content-length") || 0);
     if (length > 2 * 1024 * 1024) return null;
@@ -305,11 +321,17 @@ async function publicReferenceMetadata(url: string) {
     const title = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1]
       || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]
       || "";
-    const thumbnailUrl = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["'](https:[^"']+)["']/i)?.[1] || "";
+    const thumbnailCandidate = decodeMetadataText(html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["'](https:[^"']+)["']/i)?.[1] || "");
+    let thumbnailUrl = "";
+    try {
+      thumbnailUrl = thumbnailCandidate ? safeUrl(thumbnailCandidate) : "";
+    } catch {
+      thumbnailUrl = "";
+    }
     return {
       title: decodeMetadataText(title).slice(0, 300),
       author: "",
-      thumbnailUrl: decodeMetadataText(thumbnailUrl),
+      thumbnailUrl,
     };
   } catch {
     return null;
@@ -392,6 +414,11 @@ export async function generateSelectedSourceMix(input: {
   if (!references.length) throw new Error("AI 믹스에 사용할 쇼츠 소스를 하나 이상 선택해주세요.");
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const model = process.env.OPENAI_FAST_MODEL || process.env.OPENAI_STRATEGY_MODEL || process.env.OPENAI_QUALITY_MODEL || "gpt-5.6-sol";
+  const visualReferences = references.flatMap((item) => item.analysisFrameUrls.slice(0, 2).map((url, frameIndex) => ({
+    referenceId: item.id,
+    frameIndex: frameIndex + 1,
+    url,
+  }))).slice(0, 8);
   const sourceSummary = references.map((item) => ({
     id: item.id,
     platform: item.platform,
@@ -400,6 +427,7 @@ export async function generateSelectedSourceMix(input: {
     assetKind: item.assetKind,
     rightsStatus: item.rightsStatus,
     mayUseOriginalVideo: item.assetKind === "video-file" && item.useInFinal && item.rightsStatus !== "unverified",
+    visibleFrameNumbers: visualReferences.filter((frame) => frame.referenceId === item.id).map((frame) => frame.frameIndex),
     selectedKeywords: item.selectedKeywords,
     analysis: item.analysis ? {
       sourceSummary: item.analysis.sourceSummary,
@@ -409,29 +437,36 @@ export async function generateSelectedSourceMix(input: {
       mixPlan: item.analysis.mixPlan,
     } : null,
   }));
+  const mixContent: Array<
+    | { type: "input_text"; text: string }
+    | { type: "input_image"; image_url: string; detail: "low" }
+  > = [{
+    type: "input_text",
+    text: [
+      "당신은 GY-NEXUS의 쇼핑 쇼츠 믹스 편집감독이다.",
+      `상품명: ${input.productName}`,
+      `검증된 상품 설명: ${input.productDescription || "없음"}`,
+      `최종 목표 길이: ${input.durationSeconds}초`,
+      `대표가 선택한 소스: ${JSON.stringify(sourceSummary)}`,
+      `뒤에 첨부된 이미지 순서: ${JSON.stringify(visualReferences.map((frame, index) => ({ inputImage: index + 1, referenceId: frame.referenceId, frameIndex: frame.frameIndex })))}`,
+      "첨부된 이미지는 공개 검색 카드의 대표 이미지 또는 대표가 올린 분석 프레임이며, 영상 원본 전체로 단정하지 않는다.",
+      "첫 2초에 결과나 문제를 보여주고, 중간에는 사용 장면과 판매 포인트, 마지막에는 과장 없는 CTA를 배치한다.",
+      "여러 소스의 고유 순서를 그대로 이어붙이지 말고 완전히 새로운 한국형 판매 순서로 재구성한다.",
+      "use-licensed는 mayUseOriginalVideo가 true인 video-file에만 허용한다.",
+      "권리 미확인 또는 page-link 소스는 아이디어만 참고하고 반드시 recreate 또는 generated로 만든다.",
+      "원본 얼굴, 음악, 워터마크, 자막 문장, 고유 편집 순서를 복제하지 않는다.",
+      "각 컷은 0.7~2.5초이며 전체 컷 길이 합은 목표 길이에 최대한 맞춘다.",
+      "referenceId는 위 목록의 정확한 id를 쓰며 새 장면은 빈 문자열로 쓴다.",
+      "frameIndex는 실제로 첨부된 해당 소스 프레임을 참고할 때만 표시된 번호를 쓰고, 아니면 0이다.",
+    ].join("\n"),
+  }];
+  visualReferences.forEach((frame) => mixContent.push({ type: "input_image", image_url: frame.url, detail: "low" }));
   const response = await openai.responses.create({
     model,
     reasoning: { effort: "medium" },
     input: [{
       role: "user",
-      content: [{
-        type: "input_text",
-        text: [
-          "당신은 GY-NEXUS의 쇼핑 쇼츠 믹스 편집감독이다.",
-          `상품명: ${input.productName}`,
-          `검증된 상품 설명: ${input.productDescription || "없음"}`,
-          `최종 목표 길이: ${input.durationSeconds}초`,
-          `대표가 선택한 소스: ${JSON.stringify(sourceSummary)}`,
-          "첫 2초에 결과나 문제를 보여주고, 중간에는 사용 장면과 판매 포인트, 마지막에는 과장 없는 CTA를 배치한다.",
-          "여러 소스의 고유 순서를 그대로 이어붙이지 말고 완전히 새로운 한국형 판매 순서로 재구성한다.",
-          "use-licensed는 mayUseOriginalVideo가 true인 video-file에만 허용한다.",
-          "권리 미확인 또는 page-link 소스는 아이디어만 참고하고 반드시 recreate 또는 generated로 만든다.",
-          "원본 얼굴, 음악, 워터마크, 자막 문장, 고유 편집 순서를 복제하지 않는다.",
-          "각 컷은 0.7~2.5초이며 전체 컷 길이 합은 목표 길이에 최대한 맞춘다.",
-          "referenceId는 위 목록의 정확한 id를 쓰며 새 장면은 빈 문자열로 쓴다.",
-          "frameIndex는 실제 분석 프레임을 참고할 때만 1~8, 아니면 0이다.",
-        ].join("\n"),
-      }],
+      content: mixContent,
     }],
     text: { format: { type: "json_schema", name: "gy_selected_source_mix", strict: true, schema: sourceMixSchema } },
     max_output_tokens: 4500,

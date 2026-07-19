@@ -1,0 +1,36 @@
+GY-NEXUS SHOPPING SHORTS INTERNAL SEARCH V2.2
+Build date: 2026-07-19
+
+VALIDATION
+- TypeScript: PASS
+- ESLint: PASS, 0 errors and 7 pre-existing warnings
+- Next.js production build: PASS
+- FFmpeg worker syntax: PASS
+- Admin route: /admin/shopping-shorts
+- API route: /api/creative-studio-pro/china-search
+- Runtime web search: requires deployed OPENAI_API_KEY; not called with a local secret
+
+NEW WORKFLOW
+- Search indexed Douyin and Xiaohongshu public pages inside GY-NEXUS
+- Filter all, Douyin only, or Xiaohongshu only
+- Display up to 12 selectable source cards
+- Keep visible clickable source attribution on every card
+- Bulk-save selected cards to the current project source library
+- Deduplicate URLs and enforce the existing 20-source limit
+- Send available card thumbnails to the AI mix director as visual references
+- Continue directly into the existing 15-30 second selected-source mix
+- Cache repeated searches for five minutes
+- Limit excessive search requests
+
+SAFETY
+- No private API, login-cookie automation, protected-video scraping, or downloader
+- Indexed page cards are stored as unverified page links
+- Unverified originals remain blocked from final rendering
+- Only uploaded owned/licensed video files may be used as original final cuts
+- Metadata redirects stay restricted to approved public platform domains
+
+PLATFORM LIMITS
+- Search coverage depends on public web indexing and may differ from native app search
+- Login-only or non-indexed content cannot be guaranteed
+- Douyin official keyword search is a future provider that requires approved app permissions and managed keywords
+- Native account publishing and own-video management still require platform approval and OAuth

@@ -1,0 +1,40 @@
+GY-NEXUS SHOPPING SHORTS CENTER V2 FAST
+Build date: 2026-07-19
+
+RESULT
+- TypeScript: PASS
+- ESLint: PASS with 7 pre-existing non-blocking warnings, 0 errors
+- Next.js production build: PASS
+- New admin route: /admin/shopping-shorts
+- New API route: /api/creative-studio-pro/projects/[id]/reference-analysis
+- FFmpeg Worker JavaScript syntax: PASS
+
+CORE FEATURES
+- Dedicated Shopping Shorts Center sidebar item and page
+- Latest project opens automatically
+- Saved/popular product import, manual Coupang/Temu URL, product photos
+- Reference URL metadata plus up to 8 user-provided analysis frames
+- AI product name, Korean/Chinese keywords, hooks, selling points
+- Per-frame keep/remove/recreate decisions
+- Rights-safe 0.7–2.5 second mix plan
+- Rights ledger with unverified final-use hard block
+- Parallel trend and commerce generation
+- SHA-256 input fingerprint cache and unchanged-reference fast path
+- Fast generation model plus independent high-quality advertising audit
+- Exact SRT, selectable AI voice, subtitle/BGM/SFX directions
+- Exact-text SVG thumbnail downloads
+- YouTube/Instagram/Douyin/Xiaohongshu packages
+- CapCut guide, CapCut project JSON, publish package
+- Docker FFmpeg Worker for approved clips, subtitles, voice, licensed BGM and callback
+
+SAFETY
+- No protected Douyin/Xiaohongshu downloader
+- Unverified material is analysis-only
+- Runway, final rendering and publishing require rights and content approval gates
+- Licensed final assets only are sent to the video Worker
+
+DEPLOYMENT
+- Install with INSTALL-GY-SHOPPING-SHORTS-V2-FAST.ps1
+- Commit and push the validated source
+- Confirm Vercel deployment
+- Open https://gy-nexus-zfpq.vercel.app/admin/shopping-shorts
