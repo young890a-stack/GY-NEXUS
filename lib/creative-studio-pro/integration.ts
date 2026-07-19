@@ -20,6 +20,9 @@ export type MediaReference = {
   notes: string;
   analysisFrameUrls: string[];
   selectedKeywords: string[];
+  durationSeconds: number | null;
+  trimStartSecond: number;
+  trimEndSecond: number | null;
   analysis?: ReferenceAnalysis;
   createdAt: string;
 };
@@ -62,6 +65,8 @@ export type SourceMixPlan = {
     order: number;
     startSecond: number;
     durationSeconds: number;
+    sourceStartSecond: number;
+    sourceEndSecond: number;
     referenceId: string;
     frameIndex: number;
     role: string;
@@ -146,6 +151,18 @@ export function normalizeMediaReferences(value: unknown): MediaReference[] {
       ? String(raw.platform) as MediaPlatform
       : "other";
     const assetKind = raw.assetKind === "video-file" ? "video-file" as const : "page-link" as const;
+    const rawDuration = Number(raw.durationSeconds);
+    const durationSeconds = assetKind === "video-file" && Number.isFinite(rawDuration) && rawDuration > 0
+      ? Math.min(3600, Number(rawDuration.toFixed(3)))
+      : null;
+    const rawTrimStart = Number(raw.trimStartSecond);
+    const trimStartSecond = durationSeconds
+      ? Math.min(Math.max(0, Number.isFinite(rawTrimStart) ? rawTrimStart : 0), Math.max(0, durationSeconds - .7))
+      : 0;
+    const rawTrimEnd = Number(raw.trimEndSecond);
+    const trimEndSecond = durationSeconds
+      ? Math.min(durationSeconds, Math.max(trimStartSecond + .7, Number.isFinite(rawTrimEnd) && rawTrimEnd > trimStartSecond ? rawTrimEnd : durationSeconds))
+      : null;
     return {
       id: String(raw.id || `media-${Date.now()}-${index}`).slice(0, 100),
       platform,
@@ -162,6 +179,9 @@ export function normalizeMediaReferences(value: unknown): MediaReference[] {
       selectedKeywords: Array.isArray(raw.selectedKeywords)
         ? raw.selectedKeywords.map(String).map((item) => item.trim()).filter(Boolean).slice(0, 12)
         : [],
+      durationSeconds,
+      trimStartSecond: Number(trimStartSecond.toFixed(3)),
+      trimEndSecond: trimEndSecond === null ? null : Number(trimEndSecond.toFixed(3)),
       ...(raw.analysis && typeof raw.analysis === "object" && !Array.isArray(raw.analysis)
         ? { analysis: raw.analysis as ReferenceAnalysis }
         : {}),
@@ -438,10 +458,20 @@ export async function generateSelectedSourceMix(input: {
   productDescription: string;
   durationSeconds: number;
   references: MediaReference[];
+  allowLicensedOriginals?: boolean;
+  mixStrategy?: "licensed-only" | "hybrid" | "recreate";
 }) {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY가 없습니다.");
   const references = input.references.filter((item) => item.includeInMixAnalysis).slice(0, 8);
   if (!references.length) throw new Error("AI 믹스에 사용할 쇼츠 소스를 하나 이상 선택해주세요.");
+  const mixStrategy = input.mixStrategy || "recreate";
+  const licensedReferences = references.filter((item) => input.allowLicensedOriginals !== false
+    && item.assetKind === "video-file"
+    && item.useInFinal
+    && item.rightsStatus !== "unverified");
+  if (mixStrategy === "licensed-only" && !licensedReferences.length) {
+    throw new Error("‘허가 영상만 빠르게 짜집기’에는 실제 MP4/MOV 파일이 필요합니다. 직접 촬영·판매자/제휴 제공·사용 허가 영상을 올리고 ‘최종 사용’을 체크해주세요.");
+  }
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const model = process.env.OPENAI_FAST_MODEL || process.env.OPENAI_STRATEGY_MODEL || process.env.OPENAI_QUALITY_MODEL || "gpt-5.6-sol";
   const visualReferences = references.flatMap((item) => item.analysisFrameUrls.slice(0, 2).map((url, frameIndex) => ({
@@ -456,7 +486,9 @@ export async function generateSelectedSourceMix(input: {
     notes: item.notes,
     assetKind: item.assetKind,
     rightsStatus: item.rightsStatus,
-    mayUseOriginalVideo: item.assetKind === "video-file" && item.useInFinal && item.rightsStatus !== "unverified",
+    mayUseOriginalVideo: mixStrategy !== "recreate" && input.allowLicensedOriginals !== false && item.assetKind === "video-file" && item.useInFinal && item.rightsStatus !== "unverified",
+    durationSeconds: item.durationSeconds,
+    allowedRange: item.assetKind === "video-file" ? [item.trimStartSecond, item.trimEndSecond] : null,
     visibleFrameNumbers: visualReferences.filter((frame) => frame.referenceId === item.id).map((frame) => frame.frameIndex),
     selectedKeywords: item.selectedKeywords,
     analysis: item.analysis ? {
@@ -477,12 +509,19 @@ export async function generateSelectedSourceMix(input: {
       `상품명: ${input.productName}`,
       `검증된 상품 설명: ${input.productDescription || "없음"}`,
       `최종 목표 길이: ${input.durationSeconds}초`,
+      `짜집기 방식: ${mixStrategy}`,
       `대표가 선택한 소스: ${JSON.stringify(sourceSummary)}`,
       `뒤에 첨부된 이미지 순서: ${JSON.stringify(visualReferences.map((frame, index) => ({ inputImage: index + 1, referenceId: frame.referenceId, frameIndex: frame.frameIndex })))}`,
       "첨부된 이미지는 공개 검색 카드의 대표 이미지 또는 대표가 올린 분석 프레임이며, 영상 원본 전체로 단정하지 않는다.",
       "첫 2초에 결과나 문제를 보여주고, 중간에는 사용 장면과 판매 포인트, 마지막에는 과장 없는 CTA를 배치한다.",
       "여러 소스의 고유 순서를 그대로 이어붙이지 말고 완전히 새로운 한국형 판매 순서로 재구성한다.",
       "use-licensed는 mayUseOriginalVideo가 true인 video-file에만 허용한다.",
+      "mayUseOriginalVideo가 하나라도 있으면 훅·사용·디테일 구간의 60~80%를 서로 다른 use-licensed 컷으로 구성하고, 같은 시작 장면 반복을 피한다.",
+      mixStrategy === "licensed-only"
+        ? "모든 컷을 mayUseOriginalVideo가 true인 소스로 use-licensed 지정한다. generated와 recreate는 사용하지 않는다."
+        : mixStrategy === "recreate"
+          ? "모든 원본은 구조 참고 전용이다. use-licensed를 사용하지 않고 recreate 또는 generated로만 설계한다."
+          : "허가 원본과 새 AI 장면을 섞되 첫 훅과 CTA는 필요하면 새 장면으로 설계한다.",
       "권리 미확인 또는 page-link 소스는 아이디어만 참고하고 반드시 recreate 또는 generated로 만든다.",
       "원본 얼굴, 음악, 워터마크, 자막 문장, 고유 편집 순서를 복제하지 않는다.",
       "각 컷은 0.7~2.5초이며 전체 컷 길이 합은 목표 길이에 최대한 맞춘다.",
@@ -507,24 +546,49 @@ export async function generateSelectedSourceMix(input: {
   const referenceMap = new Map(references.map((item) => [item.id, item]));
   const target = Math.max(15, Math.min(30, Number(input.durationSeconds) || 20));
   const cuts: SourceMixPlan["cuts"] = [];
+  const sourceCursors = new Map<string, number>();
   let cursor = 0;
   for (const rawCut of parsed.cuts.slice(0, 12)) {
     if (cursor >= target - .7) break;
-    const reference = referenceMap.get(String(rawCut.referenceId || ""));
+    const requestedReference = referenceMap.get(String(rawCut.referenceId || ""));
+    const reference = mixStrategy === "licensed-only"
+      ? (requestedReference && licensedReferences.some((item) => item.id === requestedReference.id)
+        ? requestedReference
+        : licensedReferences[cuts.length % licensedReferences.length])
+      : requestedReference;
     const licensed = Boolean(
       reference
       && reference.assetKind === "video-file"
       && reference.useInFinal
-      && reference.rightsStatus !== "unverified",
+      && reference.rightsStatus !== "unverified"
+      && input.allowLicensedOriginals !== false,
     );
-    const decision = rawCut.decision === "use-licensed" && !licensed ? "recreate" : rawCut.decision;
+    const decision = mixStrategy === "licensed-only"
+      ? "use-licensed" as const
+      : mixStrategy === "recreate"
+        ? (rawCut.decision === "generated" ? "generated" as const : "recreate" as const)
+        : rawCut.decision === "use-licensed" && !licensed ? "recreate" as const : rawCut.decision;
     const remaining = target - cursor;
     const durationSeconds = Number(Math.min(2.5, Math.max(.7, Number(rawCut.durationSeconds) || 1.5), remaining).toFixed(2));
+    let sourceStartSecond = 0;
+    let sourceEndSecond = 0;
+    if (decision === "use-licensed" && reference) {
+      const rangeStart = Math.max(0, Number(reference.trimStartSecond) || 0);
+      const rangeEnd = Math.max(rangeStart + .7, Number(reference.trimEndSecond || reference.durationSeconds || rangeStart + 60));
+      const available = Math.max(.7, rangeEnd - rangeStart);
+      const consumed = sourceCursors.get(reference.id) || 0;
+      const safeWindow = Math.max(.01, available - durationSeconds);
+      sourceStartSecond = Number((rangeStart + (consumed % safeWindow)).toFixed(2));
+      sourceEndSecond = Number(Math.min(rangeEnd, sourceStartSecond + durationSeconds).toFixed(2));
+      sourceCursors.set(reference.id, consumed + durationSeconds + .35);
+    }
     cuts.push({
       ...rawCut,
       order: cuts.length + 1,
       startSecond: Number(cursor.toFixed(2)),
       durationSeconds,
+      sourceStartSecond,
+      sourceEndSecond,
       referenceId: reference?.id || "",
       frameIndex: reference ? Math.max(0, Math.min(8, Number(rawCut.frameIndex) || 0)) : 0,
       decision,
@@ -533,15 +597,27 @@ export async function generateSelectedSourceMix(input: {
   }
   while (cursor < target - .7 && cuts.length < 12) {
     const durationSeconds = Number(Math.min(2.5, target - cursor).toFixed(2));
+    const fallbackReference = mixStrategy === "licensed-only"
+      ? licensedReferences[cuts.length % licensedReferences.length]
+      : null;
+    const rangeStart = Math.max(0, Number(fallbackReference?.trimStartSecond) || 0);
+    const rangeEnd = Math.max(rangeStart + .7, Number(fallbackReference?.trimEndSecond || fallbackReference?.durationSeconds || rangeStart + 60));
+    const consumed = fallbackReference ? sourceCursors.get(fallbackReference.id) || 0 : 0;
+    const fallbackStart = fallbackReference
+      ? Number((rangeStart + (consumed % Math.max(.01, rangeEnd - rangeStart - durationSeconds))).toFixed(2))
+      : 0;
+    if (fallbackReference) sourceCursors.set(fallbackReference.id, consumed + durationSeconds + .35);
     cuts.push({
       order: cuts.length + 1,
       startSecond: Number(cursor.toFixed(2)),
       durationSeconds,
-      referenceId: "",
+      sourceStartSecond: fallbackStart,
+      sourceEndSecond: fallbackReference ? Number(Math.min(rangeEnd, fallbackStart + durationSeconds).toFixed(2)) : 0,
+      referenceId: fallbackReference?.id || "",
       frameIndex: 0,
       role: cuts.length ? "판매 포인트 연결" : "첫 2초 훅",
-      decision: "generated",
-      direction: "실제 상품 사진을 보존한 새로운 한국형 장면으로 연결한다.",
+      decision: fallbackReference ? "use-licensed" : "generated",
+      direction: fallbackReference ? "허가 영상의 다른 구간을 사용해 판매 흐름을 자연스럽게 연결한다." : "실제 상품 사진을 보존한 새로운 한국형 장면으로 연결한다.",
       subtitleIntent: "검증된 상품 사실만 짧게 강조",
     });
     cursor += durationSeconds;

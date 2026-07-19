@@ -29,6 +29,10 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       productDescription: String(project.product_description || ""),
       durationSeconds: Number(project.duration_seconds) || 20,
       references: selectedReferences,
+      allowLicensedOriginals: String(settings.subtitleCleanupMode || "recreate-clean") !== "recreate-clean",
+      mixStrategy: ["licensed-only", "hybrid", "recreate"].includes(String(settings.mixStrategy))
+        ? String(settings.mixStrategy) as "licensed-only" | "hybrid" | "recreate"
+        : "recreate",
     });
     const now = new Date().toISOString();
     const nextSettings = {
@@ -54,7 +58,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     return NextResponse.json({
       success: true,
       sourceMixPlan: generated.result,
-      message: `선택한 ${selectedReferences.length}개 소스로 ${generated.result.cuts.length}컷 · ${generated.result.totalDurationSeconds}초 AI 믹스 설계를 완성했습니다.`,
+      message: `선택한 ${selectedReferences.length}개 소스로 ${generated.result.cuts.length}컷 · ${generated.result.totalDurationSeconds}초 AI 믹스 설계를 완성했습니다. 실제 합성 가능 원본 ${generated.result.cuts.filter((cut) => cut.decision === "use-licensed").length}컷, 새 장면 필요 ${generated.result.cuts.filter((cut) => cut.decision !== "use-licensed").length}컷입니다.`,
     });
   } catch (error) {
     return NextResponse.json({

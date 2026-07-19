@@ -13,6 +13,8 @@ const PORT = Number(process.env.PORT || 8080);
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 600 * 1024 * 1024;
 let queue = Promise.resolve();
+let activeJobId = null;
+let queuedJobs = 0;
 
 function send(response, status, value) {
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
@@ -129,6 +131,8 @@ function buildPlan(project, scenes) {
     url: scene.video_url,
     duration: Math.max(.7, Math.min(5, Number(scene.end_second) - Number(scene.start_second) || 5)),
     kind: "generated",
+    sourceStartSecond: 0,
+    sourceLimitEndSecond: null,
   }));
   const sourceMix = record(settings.sourceMixPlan);
   if (Array.isArray(sourceMix.cuts) && sourceMix.cuts.length) {
@@ -140,7 +144,13 @@ function buildPlan(project, scenes) {
       const duration = Math.max(.7, Math.min(2.5, Number(shot.durationSeconds) || 1.5));
       const reference = referenceMap.get(String(shot.referenceId || ""));
       if (shot.decision === "use-licensed" && reference?.url && !recreateClean) {
-        return { url: reference.url, duration, kind: "licensed" };
+        return {
+          url: reference.url,
+          duration,
+          kind: "licensed",
+          sourceStartSecond: Math.max(Number(reference.trimStartSecond) || 0, Number(shot.sourceStartSecond) || 0),
+          sourceLimitEndSecond: Number(reference.trimEndSecond || reference.durationSeconds) || null,
+        };
       }
       const source = generated[sceneIndex % Math.max(1, generated.length)];
       sceneIndex += 1;
@@ -152,7 +162,13 @@ function buildPlan(project, scenes) {
   let sceneIndex = 0;
   return reference.analysis.mixPlan.map((shot) => {
     const duration = Math.max(.7, Math.min(2.5, Number(shot.durationSeconds) || 1.5));
-    if (shot.source === "licensed-video" && reference.url) return { url: reference.url, duration, kind: "licensed" };
+    if (shot.source === "licensed-video" && reference.url) return {
+      url: reference.url,
+      duration,
+      kind: "licensed",
+      sourceStartSecond: Number(reference.trimStartSecond) || 0,
+      sourceLimitEndSecond: Number(reference.trimEndSecond || reference.durationSeconds) || null,
+    };
     const source = generated[sceneIndex % Math.max(1, generated.length)];
     sceneIndex += 1;
     return source ? { ...source, duration } : null;
@@ -188,7 +204,11 @@ async function callback(url, payload) {
 
 async function renderJob(jobId, body) {
   const root = await fs.mkdtemp(join(tmpdir(), `gy-${jobId}-`));
+  let stage = "작업 준비";
+  activeJobId = jobId;
+  queuedJobs = Math.max(0, queuedJobs - 1);
   try {
+    try { await callback(body.callbackUrl, { status: "rendering", jobId }); } catch {}
     const project = record(body.project);
     const settings = record(project.settings);
     const playbackSpeed = [1, 1.2, 1.4].includes(Number(settings.playbackSpeed)) ? Number(settings.playbackSpeed) : 1.2;
@@ -202,6 +222,7 @@ async function renderJob(jobId, body) {
     const height = vertical ? 1280 : 720;
     const plannedDuration = plan.reduce((sum, item) => sum + item.duration, 0);
     const totalDuration = Math.max(1, Math.min(Number(project.duration_seconds) || plannedDuration, plannedDuration));
+    stage = "원본 파일 다운로드·컷 구간 생성";
     const sources = await mapWithConcurrency(plan, 2, async (planItem, index) => {
       const sourcePath = join(root, `source-${index}.mp4`);
       try {
@@ -216,14 +237,24 @@ async function renderJob(jobId, body) {
       const subtitleCrop = subtitleCleanupMode === "safe-bottom-crop" && planItem.kind === "licensed"
         ? "crop=iw:trunc(ih*0.84/2)*2:0:0,"
         : "";
-      await run("ffmpeg", ["-y", "-i", sourcePath, "-t", String(planItem.duration), "-vf", `setpts=PTS/${playbackSpeed},${subtitleCrop}scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p`, "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", normalizedPath], root);
+      const sourceStart = Math.max(0, Number(planItem.sourceStartSecond) || 0);
+      const requestedTake = Math.max(planItem.duration, planItem.duration * playbackSpeed);
+      const availableTake = Number(planItem.sourceLimitEndSecond) > sourceStart
+        ? Math.max(.1, Number(planItem.sourceLimitEndSecond) - sourceStart)
+        : requestedTake;
+      const sourceTake = Math.min(requestedTake, availableTake);
+      const seekArgs = sourceStart > 0 ? ["-ss", String(sourceStart)] : [];
+      const videoFilter = `trim=duration=${sourceTake},setpts=(PTS-STARTPTS)/${playbackSpeed},${subtitleCrop}scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,tpad=stop_mode=clone:stop_duration=${planItem.duration},trim=duration=${planItem.duration},format=yuv420p`;
+      await run("ffmpeg", ["-y", ...seekArgs, "-i", sourcePath, "-vf", videoFilter, "-an", "-t", String(planItem.duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", normalizedPath], root);
       return normalizedPath;
     });
+    stage = "타임라인 컷 연결";
     const concatPath = join(root, "concat.txt");
     await fs.writeFile(concatPath, sources.map((item) => `file '${item.replace(/'/g, "'\\''")}'`).join("\n"), "utf8");
     const joinedPath = join(root, "joined.mp4");
     await run("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", concatPath, "-c", "copy", joinedPath], root);
 
+    stage = "한국어 자막·음성·배경음악 합성";
     const commerce = record(settings.commercePackage);
     const cues = Array.isArray(commerce.subtitleCues) ? commerce.subtitleCues : [];
     const assPath = join(root, "subtitles.ass");
@@ -256,17 +287,21 @@ async function renderJob(jobId, body) {
     if (audioLabels.length > 1) audioFilters.push(`${audioLabels.join("")}amix=inputs=${audioLabels.length}:duration=longest:normalize=0[mixed]`);
     const filter = [`[0:v]ass=${assPath.replace(/:/g, "\\:")}[video]`, ...audioFilters].join(";");
     await run("ffmpeg", ["-y", ...inputs, "-filter_complex", filter, "-map", "[video]", "-map", mixedLabel, "-t", String(totalDuration), "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outputPath], root);
+    stage = "완성 MP4 업로드";
     const finalVideoUrl = await uploadOutput(outputPath, project.id || jobId);
     await callback(body.callbackUrl, { status: "completed", jobId, finalVideoUrl });
   } catch (error) {
-    try { await callback(body.callbackUrl, { status: "failed", jobId, message: error instanceof Error ? error.message : String(error) }); } catch {}
+    const message = `${stage}: ${error instanceof Error ? error.message : String(error)}`;
+    process.stderr.write(`[${jobId}] ${message}\n`);
+    try { await callback(body.callbackUrl, { status: "failed", jobId, message }); } catch {}
   } finally {
+    activeJobId = null;
     await fs.rm(root, { recursive: true, force: true });
   }
 }
 
 const server = createServer(async (request, response) => {
-  if (request.method === "GET" && request.url === "/health") return send(response, 200, { ok: true, service: "gy-nexus-video-worker" });
+  if (request.method === "GET" && request.url === "/health") return send(response, 200, { ok: true, service: "gy-nexus-video-worker", activeJobId, queuedJobs });
   if (request.method !== "POST" || request.url !== "/render") return send(response, 404, { success: false, message: "Not found" });
   if (!process.env.VIDEO_WORKER_SECRET || request.headers.authorization !== `Bearer ${process.env.VIDEO_WORKER_SECRET}`) return send(response, 401, { success: false, message: "인증 실패" });
   try {
@@ -280,6 +315,7 @@ const server = createServer(async (request, response) => {
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     await safeHttpsUrl(body.callbackUrl, true);
     const jobId = randomUUID();
+    queuedJobs += 1;
     queue = queue.then(() => renderJob(jobId, body)).catch(() => undefined);
     return send(response, 202, { success: true, jobId, status: "queued" });
   } catch (error) {

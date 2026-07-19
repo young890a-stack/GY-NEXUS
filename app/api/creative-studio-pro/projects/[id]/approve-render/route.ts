@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { finalUseRightsViolations } from "@/lib/creative-studio-pro/integration";
+import { finalUseRightsViolations, normalizeMediaReferences } from "@/lib/creative-studio-pro/integration";
 
 export const runtime = "nodejs";
 
@@ -25,6 +25,29 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
         success: false,
         message: "훅을 선택하고 저작권·상품 일치·허위 표현·자막·첫 3초 품질을 먼저 승인해주세요.",
       }, { status: 400 });
+    }
+
+    const sourceMix = settings.sourceMixPlan && typeof settings.sourceMixPlan === "object" && !Array.isArray(settings.sourceMixPlan)
+      ? settings.sourceMixPlan as Record<string, unknown>
+      : {};
+    const cuts = Array.isArray(sourceMix.cuts) ? sourceMix.cuts as Array<Record<string, unknown>> : [];
+    const usableIds = new Set(normalizeMediaReferences(settings.mediaReferences)
+      .filter((item) => item.assetKind === "video-file" && item.useInFinal && item.rightsStatus !== "unverified")
+      .map((item) => item.id));
+    const directLicensedMix = cuts.length > 0
+      && String(settings.subtitleCleanupMode || "recreate-clean") !== "recreate-clean"
+      && cuts.every((cut) => cut.decision === "use-licensed" && usableIds.has(String(cut.referenceId || "")));
+
+    if (directLicensedMix) {
+      const approvedAt = new Date().toISOString();
+      const { error: directError } = await supabase.from("video_projects").update({
+        render_approved: true,
+        render_approved_at: approvedAt,
+        status: "direct_mix_approved",
+        updated_at: approvedAt,
+      }).eq("id", id);
+      if (directError) throw directError;
+      return NextResponse.json({ success: true, directMix: true, message: "허가 영상 직접 짜집기를 비용 없이 승인했습니다." });
     }
 
     const { count } = await supabase

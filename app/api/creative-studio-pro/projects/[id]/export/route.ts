@@ -144,13 +144,15 @@ ${imageUrl ? `<image href="${escapeXml(imageUrl)}" x="${Math.round(width * .08)}
         ...(sourceMixPlan && Array.isArray(sourceMixPlan.cuts)
           ? sourceMixPlan.cuts.map((rawCut) => {
             const cut = rawCut && typeof rawCut === "object" && !Array.isArray(rawCut) ? rawCut as Record<string, unknown> : {};
-            return `${cut.order}. ${cut.startSecond}초부터 ${cut.durationSeconds}초 · ${cut.role} · ${cut.decision} · ${cut.direction}`;
+            const sourceRange = cut.decision === "use-licensed" ? ` · 원본 ${cut.sourceStartSecond || 0}–${cut.sourceEndSecond || "자동"}초` : "";
+            return `${cut.order}. ${cut.startSecond}초부터 ${cut.durationSeconds}초 · ${cut.role} · ${cut.decision}${sourceRange} · ${cut.direction}`;
           })
           : []),
         ...analyzedReferences.flatMap((item) => (item.analysis?.mixPlan || []).map((shot) => `${shot.order}. ${shot.durationSeconds}초 · ${shot.role} · ${shot.source} · ${shot.direction}`)),
         "",
         `자막 스타일: ${String(settings.subtitleStyle || "bold-pop")}`,
         `편집 속도: ${String(settings.playbackSpeed || "1.2")}x`,
+        `짜집기 방식: ${String(settings.mixStrategy || "recreate")}`,
         `중국어 화면 자막 처리: ${String(settings.subtitleCleanupMode || "recreate-clean")}`,
         `원본 음성 처리: ${String(settings.sourceAudioMode || "mute-korean-tts")}`,
         `배경음악 분위기: ${String(settings.musicMood || "modern-corporate")}`,
@@ -252,6 +254,7 @@ ${imageUrl ? `<image href="${escapeXml(imageUrl)}" x="${Math.round(width * .08)}
         playbackSpeed: settings.playbackSpeed || 1.2,
         subtitleCleanupMode: settings.subtitleCleanupMode || "recreate-clean",
         sourceAudioMode: settings.sourceAudioMode || "mute-korean-tts",
+        mixStrategy: settings.mixStrategy || "recreate",
         thumbnailStyle: settings.thumbnailStyle || "benefit-arrow",
         sfxMode: settings.sfxMode || "recommended",
         commercePackage: settings.commercePackage || null,

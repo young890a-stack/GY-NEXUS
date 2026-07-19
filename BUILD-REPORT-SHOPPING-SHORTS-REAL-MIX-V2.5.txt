@@ -1,0 +1,42 @@
+GY-NEXUS SHOPPING SHORTS REAL MIX V2.5
+Build date: 2026-07-20
+
+ROOT CAUSES FIXED
+- Search-result page links were presented too similarly to editable video files
+- Selected-source action generated a plan but did not guarantee renderable clips
+- Licensed source cuts always started at source second zero
+- Speed-up shortened output clips below their planned timeline duration
+- Render endpoint required every Runway scene even for licensed-only mixes
+- No preflight explained missing files, approvals, voice, scenes, or worker
+- Queued render jobs did not visibly advance to rendering/completed/failed
+- Uploaded video analysis required manual frame captures
+
+IMPLEMENTED
+- Browser-side automatic duration read and 5-6 representative-frame extraction
+- Per-video trim start/end controls
+- Deterministic non-repeating licensed clip windows
+- Licensed-only, hybrid, and recreate mix strategies
+- Direct licensed-only FFmpeg approval path without Runway cost
+- Hybrid/generated readiness rules
+- Real Mix Preflight API and UI
+- One-button real mix execution after content approval
+- Automatic Korean TTS generation when required
+- Render-job polling every four seconds
+- Worker stage callbacks and duplicate-job prevention
+- Worker health and queue diagnostics
+- Render Docker Blueprint
+
+VALIDATION
+- TypeScript: PASS
+- ESLint: PASS, 0 errors and 7 pre-existing warnings
+- Next.js production build: PASS
+- Worker JavaScript syntax: PASS
+- FFmpeg speed/duration regression: PASS (2.8s source at 1.4x -> exact 2.0s output)
+- /api/creative-studio-pro/projects/[id]/mix-readiness: build route PASS
+
+RIGHTS SAFETY
+- No protected third-party stream extraction
+- No automatic Douyin/Xiaohongshu video download
+- No watermark removal
+- Unverified search results remain analysis-only
+- Original final cuts require owned, seller-provided, affiliate-provided, or permission-confirmed uploaded files

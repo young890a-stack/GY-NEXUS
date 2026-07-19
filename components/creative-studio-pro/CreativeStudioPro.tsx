@@ -34,6 +34,7 @@ type Project = {
     playbackSpeed?: 1 | 1.2 | 1.4;
     subtitleCleanupMode?: "recreate-clean" | "safe-bottom-crop" | "keep-licensed";
     sourceAudioMode?: "mute-korean-tts" | "mute";
+    mixStrategy?: "licensed-only" | "hybrid" | "recreate";
     selectedHookIndex?: number;
     selectedHook?: string;
     contentApprovedAt?: string;
@@ -108,6 +109,9 @@ type MediaReference = {
   notes: string;
   analysisFrameUrls: string[];
   selectedKeywords: string[];
+  durationSeconds: number | null;
+  trimStartSecond: number;
+  trimEndSecond: number | null;
   analysis?: ReferenceAnalysis;
   createdAt: string;
 };
@@ -120,6 +124,8 @@ type SourceMixPlan = {
     order: number;
     startSecond: number;
     durationSeconds: number;
+    sourceStartSecond: number;
+    sourceEndSecond: number;
     referenceId: string;
     frameIndex: number;
     role: string;
@@ -171,6 +177,25 @@ type ChinaPreviewState = {
   mode: "official-embed" | "platform-player" | "error";
   embedUrl: string;
   message: string;
+};
+
+type MixReadiness = {
+  ready: boolean;
+  mode: "licensed-direct" | "hybrid" | "generated" | "unplanned";
+  licensedCutCount: number;
+  generatedCutCount: number;
+  readyGeneratedSceneCount: number;
+  usableLicensedAssetCount: number;
+  worker: { configured: boolean; reachable: boolean };
+  blockers: Array<{ code: string; message: string; action: string }>;
+};
+
+type RenderJob = {
+  status: "queued" | "rendering" | "completed" | "failed";
+  worker_job_id?: string | null;
+  output_url?: string | null;
+  error_message?: string | null;
+  created_at?: string;
 };
 
 type ReferenceAnalysis = {
@@ -262,7 +287,7 @@ type Scene = {
   error_message?: string | null;
 };
 
-type BusyState = "create" | "package" | "productization" | "media" | "reference" | "reference-video" | "reference-analysis" | "source-mix" | "china-search" | "china-import" | "shopping-pipeline" | "content-approval" | "voice" | "image" | "images" | "approve" | "scene" | "all" | "render" | "publish" | null;
+type BusyState = "create" | "package" | "productization" | "media" | "reference" | "reference-video" | "reference-analysis" | "source-mix" | "china-search" | "china-import" | "shopping-pipeline" | "mix-execution" | "content-approval" | "voice" | "image" | "images" | "approve" | "scene" | "all" | "render" | "publish" | null;
 
 const styles = [
   ["cinematic-product", "영화형 상품 광고"],
@@ -326,6 +351,8 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
   const [mediaReferences, setMediaReferences] = useState<MediaReference[]>([]);
   const [mediaAnalysisFiles, setMediaAnalysisFiles] = useState<File[]>([]);
   const [mediaVideoFile, setMediaVideoFile] = useState<File | null>(null);
+  const [mediaVideoDuration, setMediaVideoDuration] = useState<number | null>(null);
+  const [mediaInspecting, setMediaInspecting] = useState(false);
   const [chinaSearchKeyword, setChinaSearchKeyword] = useState("");
   const [chinaSearchPlatform, setChinaSearchPlatform] = useState<ChinaSearchPlatform>("all");
   const [chinaSearchResults, setChinaSearchResults] = useState<ChinaSearchResult[]>([]);
@@ -334,12 +361,15 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
   const [chinaSearchResultMode, setChinaSearchResultMode] = useState<ChinaSearchResultMode>("related");
   const [selectedChinaResultIds, setSelectedChinaResultIds] = useState<string[]>([]);
   const [chinaPreview, setChinaPreview] = useState<ChinaPreviewState | null>(null);
+  const [mixReadiness, setMixReadiness] = useState<MixReadiness | null>(null);
+  const [renderJob, setRenderJob] = useState<RenderJob | null>(null);
   const [shoppingPipelineStep, setShoppingPipelineStep] = useState(0);
   const [editorPreferences, setEditorPreferences] = useState<{
     playbackSpeed: 1 | 1.2 | 1.4;
     subtitleCleanupMode: "recreate-clean" | "safe-bottom-crop" | "keep-licensed";
     sourceAudioMode: "mute-korean-tts" | "mute";
-  }>({ playbackSpeed: 1.2, subtitleCleanupMode: "recreate-clean", sourceAudioMode: "mute-korean-tts" });
+    mixStrategy: "licensed-only" | "hybrid" | "recreate";
+  }>({ playbackSpeed: 1.2, subtitleCleanupMode: "recreate-clean", sourceAudioMode: "mute-korean-tts", mixStrategy: "recreate" });
   const [chinaAccountConnectorStatus, setChinaAccountConnectorStatus] = useState<"checking" | "connected" | "not-installed" | "searching" | "error">("checking");
   const [chinaConnectionStatus, setChinaConnectionStatus] = useState<ChinaConnectionStatus | null>(null);
   const [mediaDraft, setMediaDraft] = useState({
@@ -450,8 +480,12 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
           includeInMixAnalysis: item.includeInMixAnalysis !== false,
           analysisFrameUrls: Array.isArray(item.analysisFrameUrls) ? item.analysisFrameUrls : [],
           selectedKeywords: Array.isArray(item.selectedKeywords) ? item.selectedKeywords : [],
+          durationSeconds: Number(item.durationSeconds) > 0 ? Number(item.durationSeconds) : null,
+          trimStartSecond: Math.max(0, Number(item.trimStartSecond) || 0),
+          trimEndSecond: Number(item.trimEndSecond) > 0 ? Number(item.trimEndSecond) : null,
         }))
         : []);
+      setRenderJob(data.renderJob || null);
       setSelectedHookIndex(Number.isInteger(data.project.settings?.selectedHookIndex) ? data.project.settings.selectedHookIndex : null);
       setEditorPreferences({
         playbackSpeed: [1, 1.2, 1.4].includes(Number(data.project.settings?.playbackSpeed))
@@ -463,10 +497,24 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
         sourceAudioMode: ["mute-korean-tts", "mute"].includes(String(data.project.settings?.sourceAudioMode))
           ? data.project.settings.sourceAudioMode as "mute-korean-tts" | "mute"
           : "mute-korean-tts",
+        mixStrategy: ["licensed-only", "hybrid", "recreate"].includes(String(data.project.settings?.mixStrategy))
+          ? data.project.settings.mixStrategy as "licensed-only" | "hybrid" | "recreate"
+          : "recreate",
       });
+      void refreshMixReadiness(data.project.id).catch(() => setMixReadiness(null));
     } else {
       setError(data.message);
     }
+  }
+
+  async function refreshMixReadiness(projectId = selected?.id) {
+    if (!projectId) return null;
+    const response = await fetch(`/api/creative-studio-pro/projects/${projectId}/mix-readiness`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.message || "실제 짜집기 실행 조건을 확인하지 못했습니다.");
+    setMixReadiness(data.readiness);
+    if (data.renderJob) setRenderJob(data.renderJob);
+    return data.readiness as MixReadiness;
   }
 
   useEffect(() => {
@@ -481,6 +529,16 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
     // Initial hydration only. Subsequent refreshes are explicit after mutations.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!selected?.id || !renderJob || !["queued", "rendering"].includes(renderJob.status)) return;
+    const timer = window.setInterval(() => {
+      void openProject({ id: selected.id });
+    }, 4000);
+    return () => window.clearInterval(timer);
+    // Poll only while the current render job is active.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, renderJob?.status]);
 
   function patch(key: string, value: string | number) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -565,10 +623,53 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
     return data.urls as string[];
   }
 
-  function selectMediaVideo(fileList: FileList | null) {
+  async function extractLocalVideoFrames(file: File) {
+    const objectUrl = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "auto";
+    video.muted = true;
+    video.playsInline = true;
+    video.src = objectUrl;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        video.onloadedmetadata = () => resolve();
+        video.onerror = () => reject(new Error("영상 메타데이터를 읽지 못했습니다."));
+      });
+      const duration = Number(video.duration);
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("영상 길이를 확인하지 못했습니다.");
+      const ratios = duration < 4 ? [.12, .32, .52, .72, .88] : [.08, .24, .4, .56, .72, .88];
+      const maxWidth = 640;
+      const scale = Math.min(1, maxWidth / Math.max(1, video.videoWidth));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(2, Math.round(video.videoWidth * scale));
+      canvas.height = Math.max(2, Math.round(video.videoHeight * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("브라우저가 영상 프레임 추출을 지원하지 않습니다.");
+      const frames: File[] = [];
+      for (const [index, ratio] of ratios.entries()) {
+        video.currentTime = Math.min(Math.max(0, duration * ratio), Math.max(0, duration - .05));
+        await new Promise<void>((resolve, reject) => {
+          video.onseeked = () => resolve();
+          video.onerror = () => reject(new Error("영상 프레임 이동에 실패했습니다."));
+        });
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", .84));
+        if (blob) frames.push(new File([blob], `auto-frame-${String(index + 1).padStart(2, "0")}.jpg`, { type: "image/jpeg" }));
+      }
+      return { duration: Number(duration.toFixed(2)), frames };
+    } finally {
+      video.removeAttribute("src");
+      video.load();
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+
+  async function selectMediaVideo(fileList: FileList | null) {
     const file = fileList?.[0] || null;
     if (!file) {
       setMediaVideoFile(null);
+      setMediaVideoDuration(null);
+      setMediaInspecting(false);
       return;
     }
     if (!["video/mp4", "video/webm", "video/quicktime"].includes(file.type)) {
@@ -581,6 +682,19 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
     }
     setError("");
     setMediaVideoFile(file);
+    setMediaInspecting(true);
+    try {
+      const extracted = await extractLocalVideoFrames(file);
+      setMediaVideoDuration(extracted.duration);
+      setMediaAnalysisFiles(extracted.frames);
+      setMessage(`허가 영상 ${extracted.duration.toFixed(1)}초와 핵심 장면 ${extracted.frames.length}장을 자동으로 읽었습니다.`);
+    } catch (cause) {
+      setMediaVideoDuration(null);
+      setMediaAnalysisFiles([]);
+      setError(cause instanceof Error ? `${cause.message} 영상 파일은 올릴 수 있지만 분석 프레임을 직접 선택해주세요.` : "자동 프레임 추출 실패");
+    } finally {
+      setMediaInspecting(false);
+    }
     setMediaDraft((current) => ({
       ...current,
       title: current.title || file.name.replace(/\.[^.]+$/, ""),
@@ -632,12 +746,16 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
         notes: mediaDraft.notes.trim(),
         analysisFrameUrls,
         selectedKeywords: [],
+        durationSeconds: mediaVideoDuration,
+        trimStartSecond: 0,
+        trimEndSecond: mediaVideoDuration,
         createdAt: new Date().toISOString(),
       };
       setMediaReferences((current) => [...current, next].slice(0, 20));
       setMediaDraft({ platform: "douyin", url: "", title: "", rightsStatus: "unverified", useInFinal: false, notes: "" });
       setMediaAnalysisFiles([]);
       setMediaVideoFile(null);
+      setMediaVideoDuration(null);
       setError("");
       setMessage("소재를 목록에 추가했습니다. ‘권리 목록 저장’을 눌러 프로젝트에 반영해주세요.");
     } catch (cause) {
@@ -658,10 +776,18 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
     setMessage("선택한 쇼츠의 훅·장면 역할을 비교해 새로운 한국형 판매 순서를 설계하고 있습니다.");
     try {
       await persistMediaReferences();
+      const settingsResponse = await fetch(`/api/creative-studio-pro/projects/${selected.id}/editor-settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editorPreferences),
+      });
+      const settingsData = await settingsResponse.json();
+      if (!settingsResponse.ok || !settingsData.success) throw new Error(settingsData.message || "AI 편집 설정 저장 실패");
       const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/source-mix`, { method: "POST" });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || "AI 소스 믹스 설계 실패");
       await openProject(selected);
+      await refreshMixReadiness(selected.id).catch(() => undefined);
       setMessage(data.message);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "AI 소스 믹스 설계 실패");
@@ -794,6 +920,9 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
       notes: `${item.note}. 훅·촬영각도·판매 구조만 분석하고 원본 영상은 최종본에 사용하지 않습니다.`,
       analysisFrameUrls: item.thumbnailUrl ? [item.thumbnailUrl] : [],
       selectedKeywords: chinaKeywords.filter((keyword) => keyword.evidenceCount > 0).slice(0, 6).map((keyword) => keyword.simplifiedChinese),
+      durationSeconds: null,
+      trimStartSecond: 0,
+      trimEndSecond: null,
       createdAt: new Date().toISOString(),
     }));
     return { imported, nextReferences: [...mediaReferences, ...imported].slice(0, 20) };
@@ -862,9 +991,71 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
       setShoppingPipelineStep(5);
       setSelectedChinaResultIds([]);
       await openProject(selected);
-      setMessage(`${imported.length}개 영상을 바탕으로 AI 컷 편집, 한국어 대본·자막, 음성 준비, 썸네일·게시정보까지 연결했습니다. 아래에서 훅 하나를 승인한 뒤 AI 음성을 만들면 됩니다.`);
+      await refreshMixReadiness(selected.id).catch(() => undefined);
+      setMessage(`${imported.length}개 검색 자료에서 판매 구조를 분석해 컷 설계와 한국어 대본·자막·썸네일을 준비했습니다. 검색 링크는 원본 클립이 아니므로 실제 합성에는 허가 영상 업로드 또는 새 장면 생성이 필요합니다.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "쇼핑 쇼츠 자동 제작 준비 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function executeRealMix() {
+    if (!selected) return;
+    if (!sourceMixPlan) {
+      setError("먼저 검색 소스 또는 허가 영상을 선택해 AI 짜집기 설계를 만드세요.");
+      return;
+    }
+    setBusy("mix-execution");
+    setError("");
+    setMessage("실제 파일·권리·한국어 음성·영상 Worker 상태를 확인하고 있습니다.");
+    try {
+      await persistMediaReferences();
+      const settingsResponse = await fetch(`/api/creative-studio-pro/projects/${selected.id}/editor-settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editorPreferences),
+      });
+      const settingsData = await settingsResponse.json();
+      if (!settingsResponse.ok || !settingsData.success) throw new Error(settingsData.message || "편집 설정 저장 실패");
+
+      let readiness = await refreshMixReadiness(selected.id);
+      const contentBlocker = readiness?.blockers.find((item) => item.code === "content-approval");
+      if (contentBlocker) throw new Error(contentBlocker.message);
+
+      if (readiness?.blockers.some((item) => item.code === "voice")) {
+        setMessage("승인된 한국어 대본으로 AI 음성을 만들고 있습니다.");
+        const voiceResponse = await fetch(`/api/creative-studio-pro/projects/${selected.id}/voice`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ voice: selected.settings?.voicePreset || undefined }),
+        });
+        const voiceData = await voiceResponse.json();
+        if (!voiceResponse.ok || !voiceData.success) throw new Error(voiceData.message || "한국어 AI 음성 생성 실패");
+        readiness = await refreshMixReadiness(selected.id);
+      }
+
+      if (readiness?.blockers.some((item) => item.code === "direct-approval")) {
+        const approvalResponse = await fetch(`/api/creative-studio-pro/projects/${selected.id}/approve-render`, { method: "POST" });
+        const approvalData = await approvalResponse.json();
+        if (!approvalResponse.ok || !approvalData.success) throw new Error(approvalData.message || "실제 짜집기 승인 실패");
+        readiness = await refreshMixReadiness(selected.id);
+      }
+
+      if (!readiness?.ready) {
+        const blockers = readiness?.blockers.map((item) => `${item.message} → ${item.action}`).join("\n") || "실행 조건을 확인해주세요.";
+        throw new Error(blockers);
+      }
+
+      setMessage("허가 원본 구간과 생성 장면을 타임라인 순서대로 합성하고 있습니다.");
+      const renderResponse = await fetch(`/api/creative-studio-pro/projects/${selected.id}/render`, { method: "POST" });
+      const renderData = await renderResponse.json();
+      if (!renderResponse.ok || !renderData.success) throw new Error(renderData.message || "실제 영상 합성 요청 실패");
+      setRenderJob({ status: "queued", worker_job_id: renderData.jobId || null, created_at: new Date().toISOString() });
+      await openProject(selected);
+      setMessage("실제 짜집기 작업을 시작했습니다. 이 화면에서 대기열·합성 중·완료 상태가 4초마다 자동 갱신됩니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "실제 짜집기 실행 실패");
     } finally {
       setBusy(null);
     }
@@ -1114,23 +1305,6 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
     setMessage("Runway 장면 일괄 생성 작업을 마쳤습니다.");
   }
 
-  async function render() {
-    if (!selected) return;
-    setBusy("render");
-    setError("");
-    setMessage("");
-    try {
-      const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/render`, { method: "POST" });
-      const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.message);
-      setMessage(data.message);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "렌더링 요청 실패");
-    } finally {
-      setBusy(null);
-    }
-  }
-
   async function queueYouTube() {
     if (!selected?.final_video_url || !commercePackage || !contentApproved) return;
     const confirmed = window.confirm("완성 영상을 YouTube ‘비공개’ 게시 대기열에 등록할까요? 실제 업로드는 통합 게시센터에서 다시 실행합니다.");
@@ -1269,9 +1443,10 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
             <button className="approve" onClick={approveRunway} disabled={Boolean(busy) || imageApproved !== scenes.length || !contentApproved || Boolean(selected.render_approved)}>{selected.render_approved ? "Runway 승인됨" : busy === "approve" ? "승인 중..." : "Runway 비용 승인"}</button>
             <button onClick={() => generateNext()} disabled={Boolean(busy) || !selected.render_approved || completed === scenes.length}>{busy === "scene" ? "영상 생성 중..." : "다음 영상 생성"}</button>
             <button onClick={generateAll} disabled={Boolean(busy) || !selected.render_approved || completed === scenes.length}>{busy === "all" ? "전체 영상 생성 중..." : "남은 영상 모두 생성"}</button>
-            <button className="render" onClick={render} disabled={Boolean(busy) || completed !== scenes.length}>{busy === "render" ? "요청 중..." : "최종 MP4 합성"}</button>
+            <button className="render" onClick={executeRealMix} disabled={Boolean(busy) || !sourceMixPlan}>{busy === "mix-execution" ? "실행 조건 확인·합성 중..." : "실제 짜집기 실행"}</button>
           </div>
         </div>
+        {renderJob && <div className={`mix-render-job status-${renderJob.status}`}><div><b>{renderJob.status === "queued" ? "대기열 등록" : renderJob.status === "rendering" ? "FFmpeg 합성 중" : renderJob.status === "completed" ? "최종 영상 완료" : "합성 실패"}</b><span>{renderJob.status === "queued" || renderJob.status === "rendering" ? "4초마다 자동으로 상태를 갱신합니다. 창을 닫아도 Worker 작업은 계속됩니다." : renderJob.status === "failed" ? renderJob.error_message || "Worker 로그와 소재 파일을 확인해주세요." : "아래 최종 완성 영상을 확인하세요."}</span></div><em>{renderJob.status}</em></div>}
 
         <div className="dual-progress">
           <div><span><b>상품 이미지 품질검수</b><em>{imageProgress}%</em></span><div className="progress-track"><i style={{ width: `${imageProgress}%` }} /></div></div>
@@ -1334,7 +1509,7 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
             </section>}
 
             {chinaSearchResults.length > 0 && <section className="china-search-results" aria-label="중국 플랫폼 공개 콘텐츠 검색 결과">
-              <div className="china-search-results-head"><div><b>{chinaSearchResultMode === "popular" ? "중국어 인기 쇼츠" : "인기 결과가 없어 찾은 관련 쇼츠"} {chinaSearchResults.length}개</b><span>{chinaSearchResultMode === "popular" ? "확인 가능한 공개 인기 신호 우선" : "중국어 상품명·문제·사용 상황 관련성 우선"} · 장시간 영상 제외 · {selectedChinaResultIds.length}개 선택</span></div><div className="china-result-head-actions"><button type="button" className="secondary" onClick={importChinaSearchResults} disabled={Boolean(busy) || selectedChinaResultIds.length === 0}>{busy === "china-import" ? "저장 중..." : "소스함에만 저장"}</button><button type="button" onClick={() => void prepareSelectedShoppingShorts()} disabled={Boolean(busy) || selectedChinaResultIds.length === 0}>{busy === "shopping-pipeline" ? `AI 제작 준비 ${Math.max(1, shoppingPipelineStep)}/5` : `선택 ${selectedChinaResultIds.length}개로 AI 자동 제작`}</button></div></div>
+              <div className="china-search-results-head"><div><b>{chinaSearchResultMode === "popular" ? "중국어 인기 쇼츠" : "인기 결과가 없어 찾은 관련 쇼츠"} {chinaSearchResults.length}개</b><span>{chinaSearchResultMode === "popular" ? "확인 가능한 공개 인기 신호 우선" : "중국어 상품명·문제·사용 상황 관련성 우선"} · 장시간 영상 제외 · {selectedChinaResultIds.length}개 선택</span></div><div className="china-result-head-actions"><button type="button" className="secondary" onClick={importChinaSearchResults} disabled={Boolean(busy) || selectedChinaResultIds.length === 0}>{busy === "china-import" ? "저장 중..." : "분석 소스함에 저장"}</button><button type="button" onClick={() => void prepareSelectedShoppingShorts()} disabled={Boolean(busy) || selectedChinaResultIds.length === 0}>{busy === "shopping-pipeline" ? `구조 분석 ${Math.max(1, shoppingPipelineStep)}/5` : `선택 ${selectedChinaResultIds.length}개 구조 분석·제작 준비`}</button></div></div>
               <div className="china-result-grid">{chinaSearchResults.map((item) => {
                 const isSelected = selectedChinaResultIds.includes(item.id);
                 return <article key={item.id} className={isSelected ? "selected" : ""}>
@@ -1357,14 +1532,25 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
             </section>}
 
             {chinaSearchResults.length > 0 && <section className="shopping-ai-cockpit" aria-label="AI 쇼핑 쇼츠 자동 제작 설정">
-              <div className="shopping-ai-cockpit-head"><div><span>VIDEO FLOW MATCH</span><b>선택 영상 → AI 컷 → 한국어 자막·음성 → 썸네일·게시정보</b><p>영상에서 본 제작 흐름을 한 버튼으로 준비합니다. 최종 원본 컷은 권리를 확인한 파일만 사용합니다.</p></div><strong>{selected.duration_seconds}초</strong></div>
+              <div className="shopping-ai-cockpit-head"><div><span>VIDEO FLOW MATCH</span><b>검색 자료 분석 → 한국형 컷 설계 → 대본·자막·썸네일</b><p>검색 링크에서는 판매 구조만 분석합니다. 실제 영상 짜집기는 아래 소스함에 권리를 확인한 파일을 올린 뒤 실행합니다.</p></div><strong>{selected.duration_seconds}초</strong></div>
               <div className="shopping-editor-settings">
+                <label><span>짜집기 방식</span><select value={editorPreferences.mixStrategy} onChange={(event) => {
+                  const mixStrategy = event.target.value as typeof editorPreferences.mixStrategy;
+                  setEditorPreferences((current) => ({
+                    ...current,
+                    mixStrategy,
+                    subtitleCleanupMode: mixStrategy === "recreate" ? "recreate-clean" : current.subtitleCleanupMode === "recreate-clean" ? "safe-bottom-crop" : current.subtitleCleanupMode,
+                  }));
+                }}><option value="licensed-only">허가 영상만 빠르게 짜집기</option><option value="hybrid">허가 영상＋새 AI 장면</option><option value="recreate">검색 구조만 참고해 새로 제작</option></select></label>
                 <div><span>편집 속도</span><div>{([1, 1.2, 1.4] as const).map((speed) => <button type="button" key={speed} className={editorPreferences.playbackSpeed === speed ? "selected" : ""} onClick={() => setEditorPreferences((current) => ({ ...current, playbackSpeed: speed }))}>{speed.toFixed(1)}x</button>)}</div></div>
-                <label><span>중국어 화면 자막</span><select value={editorPreferences.subtitleCleanupMode} onChange={(event) => setEditorPreferences((current) => ({ ...current, subtitleCleanupMode: event.target.value as typeof current.subtitleCleanupMode }))}><option value="recreate-clean">AI 새 장면으로 깨끗하게 재제작</option><option value="safe-bottom-crop">허가 영상 하단 안전 크롭</option><option value="keep-licensed">허가 영상 원문 유지</option></select></label>
+                <label><span>중국어 화면 자막</span><select value={editorPreferences.subtitleCleanupMode} onChange={(event) => {
+                  const subtitleCleanupMode = event.target.value as typeof editorPreferences.subtitleCleanupMode;
+                  setEditorPreferences((current) => ({ ...current, subtitleCleanupMode, mixStrategy: subtitleCleanupMode === "recreate-clean" ? "recreate" : current.mixStrategy }));
+                }}><option value="recreate-clean">AI 새 장면으로 깨끗하게 재제작</option><option value="safe-bottom-crop">허가 영상 하단 안전 크롭</option><option value="keep-licensed">허가 영상 원문 유지</option></select></label>
                 <label><span>원본 음성</span><select value={editorPreferences.sourceAudioMode} onChange={(event) => setEditorPreferences((current) => ({ ...current, sourceAudioMode: event.target.value as typeof current.sourceAudioMode }))}><option value="mute-korean-tts">원음 제거＋한국어 AI 음성</option><option value="mute">원음 제거＋무음</option></select></label>
               </div>
               <div className="shopping-pipeline-progress">{["소스 저장", "편집 설정", "AI 컷 설계", "대본·썸네일", "검수 준비"].map((label, index) => <span key={label} className={shoppingPipelineStep > index ? "done" : busy === "shopping-pipeline" && shoppingPipelineStep === index + 1 ? "active" : ""}><i>{shoppingPipelineStep > index ? "✓" : index + 1}</i>{label}</span>)}</div>
-              <button type="button" className="shopping-pipeline-button" onClick={() => void prepareSelectedShoppingShorts()} disabled={Boolean(busy) || selectedChinaResultIds.length === 0}>{busy === "shopping-pipeline" ? `자동 제작 준비 중 · ${Math.max(1, shoppingPipelineStep)}/5` : `선택 ${selectedChinaResultIds.length}개로 쇼핑 쇼츠 자동 제작 준비`}</button>
+              <button type="button" className="shopping-pipeline-button" onClick={() => void prepareSelectedShoppingShorts()} disabled={Boolean(busy) || selectedChinaResultIds.length === 0}>{busy === "shopping-pipeline" ? `구조 분석·제작 준비 중 · ${Math.max(1, shoppingPipelineStep)}/5` : `선택 ${selectedChinaResultIds.length}개 구조 분석·한국형 제작 준비`}</button>
             </section>}
 
             <p className="china-source-rule">한국어는 검색 입력으로만 사용하고, 실제 플랫폼 검색은 AI가 만든 중국어 간체 상품명과 키워드로 실행합니다. 공개 좋아요 등 인기 근거가 없으면 `인기`라고 표시하지 않고 관련 쇼츠로 자동 전환합니다. 선택 카드는 구조 분석용이며 최종 영상에는 권리를 확인한 파일만 들어갑니다.</p>
@@ -1382,8 +1568,8 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
             <label className="licensed-video-upload wide">
               <span>사용 허가 영상 파일 · 선택사항</span>
               <small>직접 촬영·판매자 제공·제휴센터 제공·사용 허가 자료만 업로드하세요. MP4/WEBM/MOV, 최대 500MB</small>
-              <input type="file" accept="video/mp4,video/webm,video/quicktime" onChange={(event) => selectMediaVideo(event.target.files)} />
-              {mediaVideoFile && <b>{mediaVideoFile.name} · {(mediaVideoFile.size / 1024 / 1024).toFixed(1)}MB</b>}
+              <input type="file" accept="video/mp4,video/webm,video/quicktime" onChange={(event) => void selectMediaVideo(event.target.files)} />
+              {mediaVideoFile && <b>{mediaVideoFile.name} · {(mediaVideoFile.size / 1024 / 1024).toFixed(1)}MB · {mediaInspecting ? "핵심 장면 자동 추출 중" : mediaVideoDuration ? `${mediaVideoDuration.toFixed(1)}초 · ${mediaAnalysisFiles.length}장 자동 추출` : "길이 확인 불가"}</b>}
             </label>
             <label className="media-final-check"><input type="checkbox" checked={mediaDraft.useInFinal} disabled={mediaDraft.rightsStatus === "unverified" || !mediaVideoFile} onChange={(event) => setMediaDraft((current) => ({ ...current, useInFinal: event.target.checked }))} /><span>업로드 허가 영상을 최종본에 사용</span></label>
             <label className="analysis-frame-upload wide">
@@ -1391,7 +1577,7 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
               <small>영상에서 핵심 장면을 캡처해 올리면 상품·훅·불필요 컷·새 믹스 순서를 분석합니다. 보호된 영상을 서버가 임의 다운로드하지 않습니다.</small>
               <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => selectAnalysisFrames(event.target.files)} />
             </label>
-            <button type="button" onClick={addMediaReference} disabled={Boolean(busy)}>{busy === "reference-video" ? "영상 업로드 중..." : busy === "reference" ? "프레임 업로드 중..." : "소재 추가"}</button>
+            <button type="button" onClick={addMediaReference} disabled={Boolean(busy) || mediaInspecting}>{mediaInspecting ? "영상 장면 읽는 중..." : busy === "reference-video" ? "영상 업로드 중..." : busy === "reference" ? "프레임 업로드 중..." : "소재 추가"}</button>
           </div>
 
           {analysisPreviewUrls.length > 0 && <div className="analysis-frame-preview">{analysisPreviewUrls.map((url, index) => (
@@ -1417,6 +1603,19 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
               <button className="analyze-reference-button" type="button" disabled={Boolean(busy)} onClick={() => analyzeReference(item.id)}>{busy === "reference-analysis" ? "분석 중..." : item.analysis ? "AI 재분석" : "AI 장면 분석"}</button>
               <button className="delete-reference-button" type="button" disabled={Boolean(busy)} onClick={() => setMediaReferences((current) => current.filter((candidate) => candidate.id !== item.id))}>삭제</button>
             </div>
+
+            {item.assetKind === "video-file" && <div className="media-trim-range">
+              <div><b>실제 사용할 원본 구간</b><span>{item.durationSeconds ? `전체 ${item.durationSeconds.toFixed(1)}초` : "전체 길이는 Worker가 다시 확인합니다."}</span></div>
+              <label>시작<input type="number" min={0} max={Math.max(0, Number(item.trimEndSecond || item.durationSeconds || 60) - .7)} step="0.1" value={item.trimStartSecond} onChange={(event) => {
+                const trimStartSecond = Math.max(0, Number(event.target.value) || 0);
+                setMediaReferences((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, trimStartSecond: Math.min(trimStartSecond, Math.max(0, Number(candidate.trimEndSecond || candidate.durationSeconds || 60) - .7)) } : candidate));
+              }} /></label>
+              <label>끝<input type="number" min={item.trimStartSecond + .7} max={item.durationSeconds || 3600} step="0.1" value={item.trimEndSecond ?? item.durationSeconds ?? ""} placeholder="자동" onChange={(event) => {
+                const rawEnd = Number(event.target.value);
+                setMediaReferences((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, trimEndSecond: Number.isFinite(rawEnd) && rawEnd > candidate.trimStartSecond ? Math.min(rawEnd, candidate.durationSeconds || 3600) : candidate.durationSeconds } : candidate));
+              }} /></label>
+              <small>AI가 이 범위 안에서 컷마다 서로 다른 시작점을 배정합니다. 같은 영상의 첫 장면 반복을 막습니다.</small>
+            </div>}
 
             {(item.analysisFrameUrls || []).length > 0 && <div className="saved-analysis-frames">{(item.analysisFrameUrls || []).map((url, index) => (
               // eslint-disable-next-line @next/next/no-img-element
@@ -1459,10 +1658,16 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
               return <article key={`${cut.order}-${cut.startSecond}`} className={`mix-${cut.decision}`}>
                 <b>{cut.order}</b><span>{cut.startSecond.toFixed(1)}–{(cut.startSecond + cut.durationSeconds).toFixed(1)}초</span>
                 <em>{cut.decision === "use-licensed" ? "허가 원본 사용" : cut.decision === "recreate" ? "새로 촬영·생성" : "새 AI 장면"}</em>
-                <h5>{cut.role}</h5><p>{cut.direction}</p><small>{reference ? `${reference.platform} · ${reference.title || "선택 소스"}` : "상품 사진 기반 새 장면"}{cut.frameIndex ? ` · 프레임 ${cut.frameIndex}` : ""}</small><i>{cut.subtitleIntent}</i>
+                <h5>{cut.role}</h5><p>{cut.direction}</p><small>{reference ? `${reference.platform} · ${reference.title || "선택 소스"}` : "상품 사진 기반 새 장면"}{cut.decision === "use-licensed" ? ` · 원본 ${Number(cut.sourceStartSecond || 0).toFixed(1)}–${Number(cut.sourceEndSecond || ((Number(cut.sourceStartSecond) || 0) + cut.durationSeconds)).toFixed(1)}초` : cut.frameIndex ? ` · 프레임 ${cut.frameIndex}` : ""}</small><i>{cut.subtitleIntent}</i>
               </article>;
             })}</div>
             <p className="source-mix-safety"><b>권리·품질 규칙:</b> {sourceMixPlan.safetySummary}</p>
+            {mixReadiness && <div className={`mix-readiness ${mixReadiness.ready ? "ready" : "blocked"}`}>
+              <div className="mix-readiness-head"><div><span>REAL MIX PREFLIGHT</span><b>{mixReadiness.mode === "licensed-direct" ? "허가 영상 직접 짜집기" : mixReadiness.mode === "hybrid" ? "허가 영상＋새 AI 장면 혼합" : "새 AI 장면 제작"}</b></div><strong>{mixReadiness.ready ? "실행 가능" : `${mixReadiness.blockers.length}개 보완 필요`}</strong></div>
+              <div className="mix-readiness-metrics"><span><b>{mixReadiness.licensedCutCount}</b>허가 원본 컷</span><span><b>{mixReadiness.generatedCutCount}</b>새 장면 컷</span><span><b>{mixReadiness.readyGeneratedSceneCount}</b>생성 완료 장면</span><span><b>{mixReadiness.worker.reachable ? "ON" : "OFF"}</b>영상 Worker</span></div>
+              {mixReadiness.blockers.length > 0 && <ul>{mixReadiness.blockers.map((blocker) => <li key={blocker.code}><b>{blocker.message}</b><span>{blocker.action}</span></li>)}</ul>}
+              <button type="button" className="real-mix-button" onClick={() => void executeRealMix()} disabled={Boolean(busy)}>{busy === "mix-execution" ? "실제 파일 확인·합성 시작 중..." : mixReadiness.ready ? "▶ 실제 짜집기 지금 실행" : "보완 확인 후 실제 짜집기 실행"}</button>
+            </div>}
           </section>}
 
           {trendIntelligence && <div className="trend-intelligence-grid" id={sourceMixPlan ? undefined : "shorts-ai-editor"}>

@@ -10,7 +10,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const { id } = await context.params;
     const body = await request.json();
     const supabase = createAdminClient();
-    if (body.status === "completed" && body.finalVideoUrl) {
+    if (body.status === "rendering") {
+      await supabase.from("video_projects").update({ status: "rendering", updated_at: new Date().toISOString() }).eq("id", id);
+      await supabase.from("video_render_jobs").update({ status: "rendering" }).eq("project_id", id).eq("worker_job_id", body.jobId).in("status", ["queued", "rendering"]);
+    } else if (body.status === "completed" && body.finalVideoUrl) {
       await supabase.from("video_projects").update({ status: "completed", final_video_url: body.finalVideoUrl, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
       await supabase.from("video_render_jobs").update({ status: "completed", output_url: body.finalVideoUrl, completed_at: new Date().toISOString() }).eq("project_id", id).in("status", ["queued","rendering"]);
     } else if (body.status === "failed") {

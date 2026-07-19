@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: gy-nexus-video-worker
+    runtime: docker
+    dockerfilePath: ./video-worker/Dockerfile
+    dockerContext: ./video-worker
+    healthCheckPath: /health
+    envVars:
+      - key: VIDEO_WORKER_SECRET
+        sync: false
+      - key: GY_APP_ORIGIN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CREATIVE_STORAGE_BUCKET
+        value: creative-assets
