@@ -1,0 +1,23 @@
+GY-NEXUS CONNECTION CENTER V4.1 HOTFIX
+Date: 2026-07-19
+
+Fixed
+- SystemDiagnostics expected obsolete checks object while /api/system/health returned summary/services.
+- Replaced unsafe Object.entries(result.checks) rendering with validated services-array rendering.
+- Added runtime response guard so missing or malformed health data does not crash /admin/settings.
+- Added missing-required and configured-count summaries.
+- Added direct navigation from settings to unified connection center.
+- Corrected local and production NEXT_PUBLIC_SITE_URL guidance.
+
+Validation
+- TypeScript: 0 errors
+- ESLint: 0 errors, 7 unrelated pre-existing warnings
+- Next.js 16.2.10 production build: passed
+- Route generation: /admin/settings and all OAuth routes present
+
+External Naver action still required
+- Enable Naver Login API
+- Add PC Web environment
+- Service URL: https://gy-nexus-zfpq.vercel.app
+- Callback URL: https://gy-nexus-zfpq.vercel.app/api/connections/naver/callback
+- Confirm NAVER_CLIENT_ID and NAVER_CLIENT_SECRET belong to the same Naver application
