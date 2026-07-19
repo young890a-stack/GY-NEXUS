@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateCommercePackage } from "@/lib/creative-studio-pro/commerce";
 import {
@@ -16,9 +17,11 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
-export async function POST(_: Request, context: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
+    const startedAt = Date.now();
     const { id } = await context.params;
+    const body = await request.json().catch(() => ({})) as { force?: boolean };
     const supabase = createAdminClient();
     const { data: project, error } = await supabase.from("video_projects").select("*").eq("id", id).single();
     if (error || !project) throw error || new Error("프로젝트를 찾을 수 없습니다.");
@@ -32,29 +35,65 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
     const settings = record(project.settings);
     const mediaReferences = normalizeMediaReferences(settings.mediaReferences);
     const referenceNotes = mediaReferences
-      .map((item) => [item.title, item.notes].filter(Boolean).join(": "))
+      .map((item) => [
+        item.title,
+        item.notes,
+        `${item.assetKind} · ${item.rightsStatus} · AI 믹스 ${item.includeInMixAnalysis ? "선택" : "제외"}`,
+        item.analysisFrameUrls.length ? `분석 프레임 ${item.analysisFrameUrls.length}장` : "",
+        item.selectedKeywords.length ? `선택 키워드 ${item.selectedKeywords.join(", ")}` : "",
+        item.analysis?.sourceSummary || "",
+        ...(item.analysis?.hookPatterns || []),
+        ...(item.analysis?.salesPoints || []),
+      ].filter(Boolean).join(": "))
       .filter(Boolean);
-    const trend = await generateTrendIntelligence({
-      productName: project.product_name,
-      productDescription: project.product_description || "",
-      durationSeconds: Number(project.duration_seconds) || 20,
-      referenceNotes,
-    });
     const productCode = typeof settings.gyProductCode === "string"
       ? settings.gyProductCode
       : gyProductCode(project.id);
-    const commerce = await generateCommercePackage({
+    const fingerprint = createHash("sha256").update(JSON.stringify({
       productName: project.product_name,
       productDescription: project.product_description || "",
       durationSeconds: Number(project.duration_seconds) || 20,
       style: project.style || "cinematic-product",
-      productUrl: typeof settings.productUrl === "string" ? settings.productUrl : undefined,
-      affiliateUrl: typeof settings.affiliateUrl === "string" ? settings.affiliateUrl : undefined,
-      platformTargets: Array.isArray(settings.platformTargets) ? settings.platformTargets.map(String) : undefined,
-      sceneNarrations: (scenes || []).map((scene) => String(scene.narration || "")).filter(Boolean),
-      productCode,
-      trendIntelligence: trend.result,
-    });
+      affiliateUrl: settings.affiliateUrl || "",
+      platformTargets: settings.platformTargets || [],
+      referenceNotes,
+    })).digest("hex");
+    if (
+      !body.force
+      && settings.productizationFingerprint === fingerprint
+      && settings.trendIntelligence
+      && settings.commercePackage
+    ) {
+      return NextResponse.json({
+        success: true,
+        cached: true,
+        productCode,
+        trendIntelligence: settings.trendIntelligence,
+        package: settings.commercePackage,
+        elapsedMs: Date.now() - startedAt,
+        message: "입력 내용이 같아 검수 완료 결과를 즉시 불러왔습니다.",
+      });
+    }
+    const durationSeconds = Number(project.duration_seconds) || 20;
+    const [trend, commerce] = await Promise.all([
+      generateTrendIntelligence({
+        productName: project.product_name,
+        productDescription: project.product_description || "",
+        durationSeconds,
+        referenceNotes,
+      }),
+      generateCommercePackage({
+        productName: project.product_name,
+        productDescription: project.product_description || "",
+        durationSeconds,
+        style: project.style || "cinematic-product",
+        productUrl: typeof settings.productUrl === "string" ? settings.productUrl : undefined,
+        affiliateUrl: typeof settings.affiliateUrl === "string" ? settings.affiliateUrl : undefined,
+        platformTargets: Array.isArray(settings.platformTargets) ? settings.platformTargets.map(String) : undefined,
+        sceneNarrations: (scenes || []).map((scene) => String(scene.narration || "")).filter(Boolean),
+        productCode,
+      }),
+    ]);
     const now = new Date().toISOString();
     const nextSettings = {
       ...settings,
@@ -65,6 +104,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
       commercePackage: commerce.result,
       commercePackageModel: commerce.model,
       commercePackageUpdatedAt: now,
+      productizationFingerprint: fingerprint,
       selectedHookIndex: null,
       selectedHook: null,
       contentApprovedAt: null,
@@ -84,7 +124,8 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
       productCode,
       trendIntelligence: trend.result,
       package: commerce.result,
-      message: "중국 탐색 키워드·독창적 장면 설계·4개 플랫폼 게시 패키지를 완성했습니다.",
+      elapsedMs: Date.now() - startedAt,
+      message: "중국 탐색 키워드·장면 분석·4개 플랫폼 게시 패키지를 병렬 생성했습니다.",
     });
   } catch (error) {
     return NextResponse.json({

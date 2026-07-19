@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createClient as createBrowserSupabaseClient } from "@/lib/supabase/client";
 
 type Project = {
   id: string;
@@ -25,9 +26,11 @@ type Project = {
     commercePackage?: CommercePackage;
     voiceAudioUrl?: string;
     voiceName?: string;
+    voicePreset?: string;
     gyProductCode?: string;
     mediaReferences?: MediaReference[];
     trendIntelligence?: TrendIntelligence;
+    sourceMixPlan?: SourceMixPlan;
     selectedHookIndex?: number;
     selectedHook?: string;
     contentApprovedAt?: string;
@@ -95,10 +98,63 @@ type MediaReference = {
   platform: "douyin" | "xiaohongshu" | "coupang" | "temu" | "owned" | "other";
   url: string;
   title: string;
+  assetKind: "page-link" | "video-file";
   rightsStatus: RightsStatus;
   useInFinal: boolean;
+  includeInMixAnalysis: boolean;
   notes: string;
+  analysisFrameUrls: string[];
+  selectedKeywords: string[];
+  analysis?: ReferenceAnalysis;
   createdAt: string;
+};
+
+type SourceMixPlan = {
+  title: string;
+  totalDurationSeconds: number;
+  selectedReferenceIds: string[];
+  cuts: Array<{
+    order: number;
+    startSecond: number;
+    durationSeconds: number;
+    referenceId: string;
+    frameIndex: number;
+    role: string;
+    decision: "use-licensed" | "recreate" | "generated";
+    direction: string;
+    subtitleIntent: string;
+  }>;
+  safetySummary: string;
+  generatedAt: string;
+  model: string;
+};
+
+type ChinaConnectionStatus = {
+  douyin: { configured: boolean; mode: string; note: string };
+  xiaohongshu: { configured: boolean; mode: string; note: string };
+};
+
+type ReferenceAnalysis = {
+  productName: string;
+  sourceSummary: string;
+  keywordCandidates: Array<{ keyword: string; language: "ko" | "zh-CN"; recommended: boolean; reason: string }>;
+  hookPatterns: string[];
+  salesPoints: string[];
+  sceneDecisions: Array<{
+    frameIndex: number;
+    decision: "keep" | "remove" | "recreate";
+    role: string;
+    reason: string;
+    suggestedDurationSeconds: number;
+  }>;
+  mixPlan: Array<{
+    order: number;
+    durationSeconds: number;
+    role: string;
+    direction: string;
+    source: "uploaded-photo" | "licensed-video" | "new-ai-scene";
+  }>;
+  copyrightSafety: string;
 };
 
 type TrendIntelligence = {
@@ -167,7 +223,7 @@ type Scene = {
   error_message?: string | null;
 };
 
-type BusyState = "create" | "package" | "productization" | "media" | "content-approval" | "voice" | "image" | "images" | "approve" | "scene" | "all" | "render" | "publish" | null;
+type BusyState = "create" | "package" | "productization" | "media" | "reference" | "reference-video" | "reference-analysis" | "source-mix" | "content-approval" | "voice" | "image" | "images" | "approve" | "scene" | "all" | "render" | "publish" | null;
 
 const styles = [
   ["cinematic-product", "영화형 상품 광고"],
@@ -195,7 +251,7 @@ const rightsLabels: Record<RightsStatus, string> = {
   unverified: "권리 미확인",
 };
 
-export default function CreativeStudioPro() {
+export default function CreativeStudioPro({ shoppingCenterMode = false }: { shoppingCenterMode?: boolean }) {
   const [form, setForm] = useState({
     title: "GY-NEXUS 20초 상품 영상",
     productUrl: "",
@@ -210,11 +266,12 @@ export default function CreativeStudioPro() {
     style: "cinematic-product",
     subtitleMode: "korean",
     voiceMode: "female",
+    voicePreset: "marin",
     musicMood: "modern-corporate",
     subtitleStyle: "bold-pop",
     thumbnailStyle: "benefit-arrow",
     sfxMode: "recommended",
-    platformTargets: ["youtube", "instagram"],
+    platformTargets: ["youtube", "instagram", "douyin", "xiaohongshu"],
     qualityThreshold: 85,
     maxImageRetries: 2,
   });
@@ -228,6 +285,10 @@ export default function CreativeStudioPro() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [mediaReferences, setMediaReferences] = useState<MediaReference[]>([]);
+  const [mediaAnalysisFiles, setMediaAnalysisFiles] = useState<File[]>([]);
+  const [mediaVideoFile, setMediaVideoFile] = useState<File | null>(null);
+  const [chinaSearchKeyword, setChinaSearchKeyword] = useState("");
+  const [chinaConnectionStatus, setChinaConnectionStatus] = useState<ChinaConnectionStatus | null>(null);
   const [mediaDraft, setMediaDraft] = useState({
     platform: "douyin" as MediaReference["platform"],
     url: "",
@@ -237,9 +298,12 @@ export default function CreativeStudioPro() {
     notes: "",
   });
   const [selectedHookIndex, setSelectedHookIndex] = useState<number | null>(null);
+  const [expandedReferenceId, setExpandedReferenceId] = useState<string | null>(null);
 
   const previewUrls = useMemo(() => referenceFiles.map((file) => URL.createObjectURL(file)), [referenceFiles]);
   useEffect(() => () => previewUrls.forEach((url) => URL.revokeObjectURL(url)), [previewUrls]);
+  const analysisPreviewUrls = useMemo(() => mediaAnalysisFiles.map((file) => URL.createObjectURL(file)), [mediaAnalysisFiles]);
+  useEffect(() => () => analysisPreviewUrls.forEach((url) => URL.revokeObjectURL(url)), [analysisPreviewUrls]);
 
   const imageApproved = scenes.filter((scene) => scene.quality_status === "approved").length;
   const qualityHolds = scenes.filter((scene) => scene.quality_status === "hold").length;
@@ -249,16 +313,21 @@ export default function CreativeStudioPro() {
   const visualProfile = selected?.settings?.visualProfile;
   const commercePackage = selected?.settings?.commercePackage;
   const trendIntelligence = selected?.settings?.trendIntelligence;
+  const sourceMixPlan = selected?.settings?.sourceMixPlan;
   const contentApproved = Boolean(selected?.settings?.contentApprovedAt);
   const usableMediaCount = mediaReferences.filter((item) => item.useInFinal && item.rightsStatus !== "unverified").length;
   const inspirationMediaCount = mediaReferences.length - usableMediaCount;
   const singlePhotoMode = form.sourceMode === "single-photo-commerce";
   const productPreviewUrl = selected?.settings?.referenceImageUrls?.[0] || selected?.source_image_url || "";
+  const activeChinaKeyword = chinaSearchKeyword.trim() || selected?.product_name || form.productName || "인기 상품";
 
-  async function loadProjects() {
+  async function loadProjects(openLatest = false) {
     const response = await fetch("/api/creative-studio-pro/projects", { cache: "no-store" });
     const data = await response.json();
-    if (data.success) setProjects(data.projects);
+    if (data.success) {
+      setProjects(data.projects);
+      if (openLatest && Array.isArray(data.projects) && data.projects[0]) await openProject(data.projects[0]);
+    }
   }
 
   async function loadSavedProducts() {
@@ -274,7 +343,15 @@ export default function CreativeStudioPro() {
     if (data.success) {
       setSelected(data.project);
       setScenes(data.scenes);
-      setMediaReferences(Array.isArray(data.project.settings?.mediaReferences) ? data.project.settings.mediaReferences : []);
+      setMediaReferences(Array.isArray(data.project.settings?.mediaReferences)
+        ? data.project.settings.mediaReferences.map((item: MediaReference) => ({
+          ...item,
+          assetKind: item.assetKind === "video-file" ? "video-file" : "page-link",
+          includeInMixAnalysis: item.includeInMixAnalysis !== false,
+          analysisFrameUrls: Array.isArray(item.analysisFrameUrls) ? item.analysisFrameUrls : [],
+          selectedKeywords: Array.isArray(item.selectedKeywords) ? item.selectedKeywords : [],
+        }))
+        : []);
       setSelectedHookIndex(Number.isInteger(data.project.settings?.selectedHookIndex) ? data.project.settings.selectedHookIndex : null);
     } else {
       setError(data.message);
@@ -282,8 +359,16 @@ export default function CreativeStudioPro() {
   }
 
   useEffect(() => {
-    void loadProjects();
-    void loadSavedProducts();
+    void Promise.all([
+      loadProjects(true),
+      loadSavedProducts(),
+      fetch("/api/creative-studio-pro/china-connections", { cache: "no-store" })
+        .then((response) => response.json())
+        .then((data) => { if (data.success) setChinaConnectionStatus(data.connections); })
+        .catch(() => undefined),
+    ]);
+    // Initial hydration only. Subsequent refreshes are explicit after mutations.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function patch(key: string, value: string | number) {
@@ -358,28 +443,130 @@ export default function CreativeStudioPro() {
     }
   }
 
-  function addMediaReference() {
+  async function uploadAnalysisFrames() {
+    if (!mediaAnalysisFiles.length) return [] as string[];
+    const payload = new FormData();
+    payload.append("purpose", "analysis");
+    mediaAnalysisFiles.forEach((file) => payload.append("images", file));
+    const response = await fetch("/api/creative-studio-pro/references", { method: "POST", body: payload });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.message || "분석 프레임 업로드 실패");
+    return data.urls as string[];
+  }
+
+  function selectMediaVideo(fileList: FileList | null) {
+    const file = fileList?.[0] || null;
+    if (!file) {
+      setMediaVideoFile(null);
+      return;
+    }
+    if (!["video/mp4", "video/webm", "video/quicktime"].includes(file.type)) {
+      setError("허가 영상은 MP4, WEBM, MOV 형식만 선택할 수 있습니다.");
+      return;
+    }
+    if (file.size < 1 || file.size > 500 * 1024 * 1024) {
+      setError("허가 영상 파일은 500MB 이하여야 합니다.");
+      return;
+    }
+    setError("");
+    setMediaVideoFile(file);
+    setMediaDraft((current) => ({
+      ...current,
+      title: current.title || file.name.replace(/\.[^.]+$/, ""),
+    }));
+  }
+
+  async function uploadMediaVideo(file: File) {
+    setBusy("reference-video");
+    const ticketResponse = await fetch("/api/creative-studio-pro/reference-videos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: file.name, contentType: file.type, size: file.size }),
+    });
+    const ticket = await ticketResponse.json();
+    if (!ticketResponse.ok || !ticket.success) throw new Error(ticket.message || "허가 영상 업로드 준비 실패");
+    const supabase = createBrowserSupabaseClient();
+    const { error: uploadError } = await supabase.storage
+      .from(ticket.bucket)
+      .uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: file.type, upsert: false });
+    if (uploadError) throw new Error(`허가 영상 업로드 실패: ${uploadError.message}`);
+    return String(ticket.publicUrl);
+  }
+
+  async function addMediaReference() {
     if (!selected) return;
+    setBusy("reference");
+    setError("");
     try {
-      const parsed = new URL(mediaDraft.url.trim());
-      if (parsed.protocol !== "https:") throw new Error("HTTPS 주소만 사용할 수 있습니다.");
+      if (!mediaVideoFile && !mediaDraft.url.trim()) throw new Error("참고 페이지 주소 또는 사용 허가 영상 파일을 입력해주세요.");
+      let assetUrl = "";
+      if (mediaVideoFile) {
+        if (mediaDraft.rightsStatus === "unverified") throw new Error("영상 파일을 올리려면 직접 촬영·판매자 제공·제휴 제공·사용 허가 중 권리 상태를 선택해주세요.");
+        assetUrl = await uploadMediaVideo(mediaVideoFile);
+      } else {
+        const parsed = new URL(mediaDraft.url.trim());
+        if (parsed.protocol !== "https:") throw new Error("HTTPS 주소만 사용할 수 있습니다.");
+        assetUrl = parsed.toString();
+      }
+      const analysisFrameUrls = await uploadAnalysisFrames();
       const next: MediaReference = {
         id: `media-${Date.now()}`,
         platform: mediaDraft.platform,
-        url: parsed.toString(),
-        title: mediaDraft.title.trim(),
+        url: assetUrl,
+        title: mediaDraft.title.trim() || mediaVideoFile?.name || mediaDraft.platform,
+        assetKind: mediaVideoFile ? "video-file" : "page-link",
         rightsStatus: mediaDraft.rightsStatus,
         useInFinal: mediaDraft.rightsStatus !== "unverified" && mediaDraft.useInFinal,
+        includeInMixAnalysis: true,
         notes: mediaDraft.notes.trim(),
+        analysisFrameUrls,
+        selectedKeywords: [],
         createdAt: new Date().toISOString(),
       };
       setMediaReferences((current) => [...current, next].slice(0, 20));
       setMediaDraft({ platform: "douyin", url: "", title: "", rightsStatus: "unverified", useInFinal: false, notes: "" });
+      setMediaAnalysisFiles([]);
+      setMediaVideoFile(null);
       setError("");
       setMessage("소재를 목록에 추가했습니다. ‘권리 목록 저장’을 눌러 프로젝트에 반영해주세요.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "올바른 소재 주소를 입력해주세요.");
+    } finally {
+      setBusy(null);
     }
+  }
+
+  async function generateSourceMix() {
+    if (!selected) return;
+    if (!mediaReferences.some((item) => item.includeInMixAnalysis)) {
+      setError("AI 짜집기 설계에 사용할 쇼츠 소스를 하나 이상 선택해주세요.");
+      return;
+    }
+    setBusy("source-mix");
+    setError("");
+    setMessage("선택한 쇼츠의 훅·장면 역할을 비교해 새로운 한국형 판매 순서를 설계하고 있습니다.");
+    try {
+      await persistMediaReferences();
+      const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/source-mix`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || "AI 소스 믹스 설계 실패");
+      await openProject(selected);
+      setMessage(data.message);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "AI 소스 믹스 설계 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function selectAnalysisFrames(files: FileList | null) {
+    const next = Array.from(files || []);
+    if (next.length > 8) {
+      setError("장면 분석 프레임은 최대 8장까지 선택할 수 있습니다.");
+      return;
+    }
+    setError("");
+    setMediaAnalysisFiles(next);
   }
 
   async function persistMediaReferences() {
@@ -411,18 +598,60 @@ export default function CreativeStudioPro() {
     }
   }
 
-  async function prepareProductization() {
+  async function analyzeReference(referenceId: string) {
+    if (!selected) return;
+    setBusy("reference-analysis");
+    setError("");
+    setMessage("상품·키워드·훅·장면 유지/제거·믹스 구조를 분석하고 있습니다.");
+    try {
+      await persistMediaReferences();
+      const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/reference-analysis`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ referenceId }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message);
+      await openProject(selected);
+      setExpandedReferenceId(referenceId);
+      setMessage(data.message);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "참고영상 AI 분석 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function toggleReferenceKeyword(referenceId: string, keyword: string) {
+    setMediaReferences((current) => current.map((item) => {
+      if (item.id !== referenceId) return item;
+      const selectedKeywords = item.selectedKeywords || [];
+      return {
+        ...item,
+        selectedKeywords: selectedKeywords.includes(keyword)
+          ? selectedKeywords.filter((itemKeyword) => itemKeyword !== keyword)
+          : [...selectedKeywords, keyword].slice(0, 12),
+      };
+    }));
+  }
+
+  async function prepareProductization(force = false) {
     if (!selected) return;
     setBusy("productization");
     setError("");
     setMessage("중국어 탐색 키워드와 독창적 장면 설계, 플랫폼별 판매 패키지를 만들고 있습니다.");
     try {
       await persistMediaReferences();
-      const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/productization`, { method: "POST" });
+      const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/productization`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
+      });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message);
       await openProject(selected);
-      setMessage(data.message);
+      const elapsed = typeof data.elapsedMs === "number" ? ` · ${(data.elapsedMs / 1000).toFixed(1)}초` : "";
+      setMessage(`${data.message}${elapsed}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "통합 상품화 준비 실패");
     } finally {
@@ -484,7 +713,7 @@ export default function CreativeStudioPro() {
       const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/voice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ voice: selected.settings?.voicePreset || undefined }),
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message);
@@ -652,17 +881,32 @@ export default function CreativeStudioPro() {
   }
 
   return (
-    <div className="creative-pro-stack shorts-quality-studio">
+    <div className={`creative-pro-stack shorts-quality-studio ${shoppingCenterMode ? "shopping-center-standalone" : ""}`}>
       <section className="panel creative-pro-hero">
         <div>
           <div className="eyebrow">GY-NEXUS · SHOPPING SHORTS PRODUCTIZATION</div>
-          <h1>상품 하나를 4개 플랫폼용 쇼핑 콘텐츠로 완성</h1>
+          <h1>{shoppingCenterMode ? "GY-NEXUS SHOPPING SHORTS CENTER" : "상품 하나를 4개 플랫폼용 쇼핑 콘텐츠로 완성"}</h1>
           <p>쿠팡·Temu 링크와 사진을 넣으면 중국어 탐색 키워드, 독창적 장면 설계, 한국형 대본·음성·자막·썸네일·게시정보를 만들고 권리와 상품 품질을 통과한 자료만 최종 영상으로 보냅니다.</p>
         </div>
         <div className="creative-pro-badge"><strong>{form.duration}초</strong><span>{form.duration / 5}개 장면</span></div>
       </section>
 
-      <div className="creative-pro-layout">
+      {shoppingCenterMode && <section className="shopping-studio-command">
+        <div className="shopping-studio-command-head">
+          <div><span>DEDICATED SHORTFORM WORKSPACE</span><h2>쇼핑 쇼츠 전용 제작실</h2><p>다른 스튜디오와 섞이지 않고 이 화면에서 소싱부터 게시 자료까지 완성합니다.</p></div>
+          <a href="/admin/creative-studio-pro">일반 Creative Studio Pro 열기</a>
+        </div>
+        <nav className="shopping-module-nav" aria-label="쇼핑 쇼츠 제작 모듈">
+          <a href="#shorts-projects" className={selected ? "ready" : "active"}><b>01</b><span>프로젝트</span><small>{selected ? "선택 완료" : "상품 입력"}</small></a>
+          <a href="#shorts-source" className={mediaReferences.length ? "ready" : ""}><b>02</b><span>소스 가져오기</span><small>URL·사진·권리</small></a>
+          <a href="#shorts-ai-editor" className={sourceMixPlan || trendIntelligence ? "ready" : ""}><b>03</b><span>AI 편집</span><small>분석·컷·믹스</small></a>
+          <a href="#shorts-voice" className={selected?.settings?.voiceAudioUrl ? "ready" : ""}><b>04</b><span>음성·자막</span><small>TTS·정확한 SRT</small></a>
+          <a href="#shorts-thumbnail" className={commercePackage ? "ready" : ""}><b>05</b><span>썸네일</span><small>문구·3안·SVG</small></a>
+          <a href="#shorts-export" className={selected?.final_video_url ? "ready" : ""}><b>06</b><span>내보내기</span><small>CapCut·MP4·게시</small></a>
+        </nav>
+      </section>}
+
+      <div className="creative-pro-layout" id="shorts-projects">
         <section className="panel creative-pro-form">
           <div className="section-title-row"><div><span className="eyebrow">STEP 1</span><h2>상품 사실자료와 영상 설정</h2></div><span className="quality-rule">통과 기준 {form.qualityThreshold}점</span></div>
           <div className="photo-mode-grid">
@@ -705,6 +949,8 @@ export default function CreativeStudioPro() {
             <label>자동 재검수 한도<select value={form.maxImageRetries} onChange={(event) => patch("maxImageRetries", Number(event.target.value))}><option value={1}>1회 · 비용 절약</option><option value={2}>2회 · 권장</option></select></label>
             <label>자막<select value={form.subtitleMode} onChange={(event) => patch("subtitleMode", event.target.value)}><option value="korean">정확한 한국어 자막</option><option value="none">자막 없음</option></select></label>
             <label>음성<select value={form.voiceMode} onChange={(event) => patch("voiceMode", event.target.value)}><option value="female">여성 내레이션</option><option value="male">남성 내레이션</option><option value="music-only">배경음악만</option><option value="silent">무음</option></select></label>
+            <label>AI 목소리<select value={form.voicePreset} onChange={(event) => patch("voicePreset", event.target.value)}><option value="marin">Marin · 자연스러운 여성</option><option value="coral">Coral · 밝고 또렷함</option><option value="shimmer">Shimmer · 부드러운 여성</option><option value="cedar">Cedar · 신뢰감 있는 남성</option><option value="onyx">Onyx · 낮고 단단함</option><option value="echo">Echo · 담백한 남성</option></select></label>
+            <label>배경음악<select value={form.musicMood} onChange={(event) => patch("musicMood", event.target.value)}><option value="modern-corporate">모던 쇼핑</option><option value="bright-lifestyle">밝은 라이프스타일</option><option value="minimal-tech">미니멀 테크</option><option value="warm-home">따뜻한 홈</option><option value="none">배경음악 없음</option></select></label>
             <label>자막 스타일<select value={form.subtitleStyle} onChange={(event) => patch("subtitleStyle", event.target.value)}><option value="bold-pop">강조형 쇼핑 자막</option><option value="clean-card">깔끔한 카드 자막</option><option value="minimal">미니멀 자막</option></select></label>
             <label>썸네일 스타일<select value={form.thumbnailStyle} onChange={(event) => patch("thumbnailStyle", event.target.value)}><option value="benefit-arrow">혜택 강조＋화살표</option><option value="problem-solution">문제 해결형</option><option value="clean-product">상품 중심형</option></select></label>
             <label>효과음<select value={form.sfxMode} onChange={(event) => patch("sfxMode", event.target.value)}><option value="recommended">장면별 추천 효과음</option><option value="minimal">최소 효과음</option><option value="none">효과음 없음</option></select></label>
@@ -751,7 +997,7 @@ export default function CreativeStudioPro() {
         </div>}
         {qualityHolds > 0 && <p className="quality-hold-note">{qualityHolds}개 장면이 상품 일치도 기준에 미달해 보류되었습니다. Runway 비용은 사용되지 않았습니다.</p>}
 
-        <section className="productization-center">
+        <section className="productization-center" id="shorts-source">
           <div className="productization-flow" aria-label="쇼핑 쇼츠 상품화 순서">
             <span className="done">1 · 상품 입력</span><i>→</i><span className={trendIntelligence ? "done" : ""}>2 · 상품화 준비</span><i>→</i><span className={selectedHookIndex !== null ? "done" : ""}>3 · 훅 선택</span><i>→</i><span className={contentApproved ? "done" : ""}>4 · 승인</span><i>→</i><span>5 · 게시</span>
           </div>
@@ -766,6 +1012,31 @@ export default function CreativeStudioPro() {
             <p>권리 미확인 자료는 저장할 수 있지만 ‘최종 영상 사용’이 자동 차단됩니다.</p>
           </div>
 
+          <div className="production-stage-board" aria-label="영상 제작 기능 상태">
+            <div className={mediaReferences.length ? "ready" : ""}><b>01</b><span>URL·소재 등록</span><small>{mediaReferences.length ? `${mediaReferences.length}개 등록` : "대기"}</small></div>
+            <div className={mediaReferences.some((item) => item.analysis) ? "ready" : ""}><b>02</b><span>상품·키워드 분석</span><small>{mediaReferences.some((item) => item.analysis) ? "완료" : "대기"}</small></div>
+            <div className={mediaReferences.some((item) => item.analysis?.sceneDecisions.length) ? "ready" : ""}><b>03</b><span>컷 유지·제거</span><small>AI 장면 감독</small></div>
+            <div className={sourceMixPlan || trendIntelligence ? "ready" : ""}><b>04</b><span>영상 믹스 설계</span><small>{sourceMixPlan ? `${sourceMixPlan.cuts.length}컷 완료` : trendIntelligence ? "초안 완료" : "대기"}</small></div>
+            <div className={commercePackage ? "ready" : ""}><b>05</b><span>대본·자막·썸네일</span><small>{commercePackage ? "완료" : "대기"}</small></div>
+            <div className={selected.final_video_url ? "ready" : ""}><b>06</b><span>CapCut·MP4·게시</span><small>{selected.final_video_url ? "완료" : "대기"}</small></div>
+          </div>
+
+          <div className="china-source-library">
+            <div className="china-source-library-head">
+              <div><span className="eyebrow">CHINA SOURCE LIBRARY</span><h4>도우인·샤오홍슈 쇼츠 수집함</h4><p>키워드로 플랫폼을 열어 후보를 찾고, 공유 주소나 사용 허가 파일을 아래 목록에 모은 뒤 AI 믹스 대상을 고릅니다.</p></div>
+              <div className="china-connection-pills">
+                <span className={chinaConnectionStatus?.douyin.configured ? "connected" : "manual"}>도우인 · {chinaConnectionStatus?.douyin.configured ? "공식 앱 키 준비" : "검색·공유 연결"}</span>
+                <span className={chinaConnectionStatus?.xiaohongshu.configured ? "connected" : "manual"}>샤오홍슈 · {chinaConnectionStatus?.xiaohongshu.configured ? "공식 앱 키 준비" : "검색·공유 연결"}</span>
+              </div>
+            </div>
+            <div className="china-source-search">
+              <label><span>찾을 상품·중국어 키워드</span><input value={chinaSearchKeyword} onChange={(event) => setChinaSearchKeyword(event.target.value)} placeholder={selected.product_name || "예: 便携榨汁杯"} /></label>
+              <a href={`https://www.douyin.com/search/${encodeURIComponent(activeChinaKeyword)}`} target="_blank" rel="noreferrer">도우인에서 찾기</a>
+              <a href={`https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(activeChinaKeyword)}`} target="_blank" rel="noreferrer">샤오홍슈에서 찾기</a>
+            </div>
+            <p className="china-source-rule">공식 공개 검색·다운로드 API가 없는 일반 타인 영상은 자동 복사하지 않습니다. 공유 링크는 트렌드 분석용, 권리 확인 영상 파일만 최종 편집용으로 사용합니다.</p>
+          </div>
+
           <div className="media-reference-form">
             <label>플랫폼<select value={mediaDraft.platform} onChange={(event) => setMediaDraft((current) => ({ ...current, platform: event.target.value as MediaReference["platform"] }))}><option value="douyin">도우인</option><option value="xiaohongshu">샤오홍슈</option><option value="coupang">쿠팡</option><option value="temu">Temu</option><option value="owned">직접 보유</option><option value="other">기타</option></select></label>
             <label>참고 영상·소재 HTTPS 주소<input value={mediaDraft.url} onChange={(event) => setMediaDraft((current) => ({ ...current, url: event.target.value }))} placeholder="도우인·샤오홍슈·판매자 제공 URL" /></label>
@@ -775,33 +1046,100 @@ export default function CreativeStudioPro() {
               setMediaDraft((current) => ({ ...current, rightsStatus, useInFinal: rightsStatus === "unverified" ? false : current.useInFinal }));
             }}>{Object.entries(rightsLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label className="wide">분석 메모<input value={mediaDraft.notes} onChange={(event) => setMediaDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="예: 첫 2초 문제 제시, 손 클로즈업, 전후 비교 리듬만 참고" /></label>
-            <label className="media-final-check"><input type="checkbox" checked={mediaDraft.useInFinal} disabled={mediaDraft.rightsStatus === "unverified"} onChange={(event) => setMediaDraft((current) => ({ ...current, useInFinal: event.target.checked }))} /><span>최종 영상에 사용</span></label>
-            <button type="button" onClick={addMediaReference}>소재 추가</button>
+            <label className="licensed-video-upload wide">
+              <span>사용 허가 영상 파일 · 선택사항</span>
+              <small>직접 촬영·판매자 제공·제휴센터 제공·사용 허가 자료만 업로드하세요. MP4/WEBM/MOV, 최대 500MB</small>
+              <input type="file" accept="video/mp4,video/webm,video/quicktime" onChange={(event) => selectMediaVideo(event.target.files)} />
+              {mediaVideoFile && <b>{mediaVideoFile.name} · {(mediaVideoFile.size / 1024 / 1024).toFixed(1)}MB</b>}
+            </label>
+            <label className="media-final-check"><input type="checkbox" checked={mediaDraft.useInFinal} disabled={mediaDraft.rightsStatus === "unverified" || !mediaVideoFile} onChange={(event) => setMediaDraft((current) => ({ ...current, useInFinal: event.target.checked }))} /><span>업로드 허가 영상을 최종본에 사용</span></label>
+            <label className="analysis-frame-upload wide">
+              <span>AI 장면 분석 프레임 · 최대 8장</span>
+              <small>영상에서 핵심 장면을 캡처해 올리면 상품·훅·불필요 컷·새 믹스 순서를 분석합니다. 보호된 영상을 서버가 임의 다운로드하지 않습니다.</small>
+              <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => selectAnalysisFrames(event.target.files)} />
+            </label>
+            <button type="button" onClick={addMediaReference} disabled={Boolean(busy)}>{busy === "reference-video" ? "영상 업로드 중..." : busy === "reference" ? "프레임 업로드 중..." : "소재 추가"}</button>
           </div>
 
+          {analysisPreviewUrls.length > 0 && <div className="analysis-frame-preview">{analysisPreviewUrls.map((url, index) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <div key={url}><img src={url} alt={`분석 프레임 ${index + 1}`} /><span>{index + 1}</span></div>
+          ))}</div>}
+
           {mediaReferences.length > 0 && <div className="media-reference-list">{mediaReferences.map((item) => <article key={item.id} className={item.rightsStatus === "unverified" ? "unverified" : "verified"}>
-            <div><b>{item.title || item.platform}</b><a href={item.url} target="_blank" rel="noreferrer">원본 확인</a><small>{item.notes || "메모 없음"}</small></div>
-            <select value={item.rightsStatus} onChange={(event) => {
-              const rightsStatus = event.target.value as RightsStatus;
-              setMediaReferences((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, rightsStatus, useInFinal: rightsStatus === "unverified" ? false : candidate.useInFinal } : candidate));
-            }}>{Object.entries(rightsLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            <label><input type="checkbox" checked={item.useInFinal} disabled={item.rightsStatus === "unverified"} onChange={(event) => setMediaReferences((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, useInFinal: event.target.checked } : candidate))} />최종 사용</label>
-            <button type="button" onClick={() => setMediaReferences((current) => current.filter((candidate) => candidate.id !== item.id))}>삭제</button>
+            <div className="media-reference-row">
+              <div className="media-reference-thumb">{item.assetKind === "video-file"
+                ? <video className="media-reference-video" src={item.url} muted controls preload="metadata" />
+                : item.analysisFrameUrls?.[0]
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={item.analysisFrameUrls[0]} alt="참고 쇼츠 프레임" />
+                  : <span>{item.platform === "douyin" ? "抖音" : item.platform === "xiaohongshu" ? "小红书" : "LINK"}</span>}</div>
+              <div className="media-reference-name"><b>{item.title || item.platform}</b><a href={item.url} target="_blank" rel="noreferrer">{item.assetKind === "video-file" ? "허가 영상 열기" : "원본 페이지 확인"}</a><small>{item.assetKind === "video-file" ? "업로드 영상 파일" : "참고 페이지 링크"} · {item.notes || "메모 없음"}</small></div>
+              <select aria-label="소재 권리 상태" value={item.rightsStatus} onChange={(event) => {
+                const rightsStatus = event.target.value as RightsStatus;
+                setMediaReferences((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, rightsStatus, useInFinal: rightsStatus === "unverified" ? false : candidate.useInFinal } : candidate));
+              }}>{Object.entries(rightsLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+              <label><input type="checkbox" checked={item.includeInMixAnalysis} onChange={(event) => setMediaReferences((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, includeInMixAnalysis: event.target.checked } : candidate))} />AI 믹스 선택</label>
+              <label><input type="checkbox" checked={item.useInFinal} disabled={item.rightsStatus === "unverified" || item.assetKind !== "video-file"} onChange={(event) => setMediaReferences((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, useInFinal: event.target.checked } : candidate))} />최종 사용</label>
+              <button className="analyze-reference-button" type="button" disabled={Boolean(busy)} onClick={() => analyzeReference(item.id)}>{busy === "reference-analysis" ? "분석 중..." : item.analysis ? "AI 재분석" : "AI 장면 분석"}</button>
+              <button className="delete-reference-button" type="button" disabled={Boolean(busy)} onClick={() => setMediaReferences((current) => current.filter((candidate) => candidate.id !== item.id))}>삭제</button>
+            </div>
+
+            {(item.analysisFrameUrls || []).length > 0 && <div className="saved-analysis-frames">{(item.analysisFrameUrls || []).map((url, index) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <div key={`${item.id}-${url}`}><img src={url} alt={`${item.title || "소재"} 프레임 ${index + 1}`} /><span>{index + 1}</span></div>
+            ))}</div>}
+
+            {item.analysis && <details className="reference-analysis-result" open={expandedReferenceId === item.id} onToggle={(event) => {
+              const isOpen = event.currentTarget.open;
+              if (isOpen) setExpandedReferenceId(item.id);
+              else setExpandedReferenceId((current) => current === item.id ? null : current);
+            }}>
+              <summary><span>AI 분석 완료</span><b>{item.analysis.productName}</b><small>키워드·훅·컷 판단·믹스 구성 보기</small></summary>
+              <div className="reference-analysis-body">
+                <p className="analysis-summary">{item.analysis.sourceSummary}</p>
+                <div className="analysis-column-grid">
+                  <section><h4>검색 키워드 선택</h4><div className="analysis-keywords">{item.analysis.keywordCandidates.map((keyword) => {
+                    const active = (item.selectedKeywords || []).includes(keyword.keyword);
+                    return <button key={`${keyword.language}-${keyword.keyword}`} type="button" className={active ? "selected" : ""} onClick={() => toggleReferenceKeyword(item.id, keyword.keyword)} title={keyword.reason}><span>{keyword.language === "zh-CN" ? "中文" : "KR"}</span>{keyword.keyword}</button>;
+                  })}</div><small>선택한 키워드는 통합 상품화 대본과 탐색 설계에 반영됩니다.</small></section>
+                  <section><h4>훅·판매 포인트</h4><ul>{item.analysis.hookPatterns.map((hook) => <li key={hook}>{hook}</li>)}</ul><div className="sales-point-list">{item.analysis.salesPoints.map((point) => <span key={point}>{point}</span>)}</div></section>
+                </div>
+                <section className="scene-decision-section"><h4>장면별 유지·제거·새로 제작</h4><div className="scene-decision-grid">{item.analysis.sceneDecisions.map((decision) => <div key={`${decision.frameIndex}-${decision.role}`} className={`decision-${decision.decision}`}><b>프레임 {decision.frameIndex}</b><em>{decision.decision === "keep" ? "유지 후보" : decision.decision === "remove" ? "제거" : "새로 제작"}</em><span>{decision.suggestedDurationSeconds}초 · {decision.role}</span><p>{decision.reason}</p></div>)}</div></section>
+                <section className="mix-plan-section"><h4>15~30초 영상 믹스 순서</h4><ol>{item.analysis.mixPlan.map((shot) => <li key={`${shot.order}-${shot.role}`}><b>{shot.order}. {shot.role}</b><em>{shot.durationSeconds}초 · {shot.source === "uploaded-photo" ? "업로드 사진" : shot.source === "licensed-video" ? "허가 영상" : "새 AI 장면"}</em><p>{shot.direction}</p></li>)}</ol></section>
+                <p className="copyright-safety-note"><b>권리 안전:</b> {item.analysis.copyrightSafety}</p>
+              </div>
+            </details>}
           </article>)}</div>}
 
           <div className="productization-primary-actions">
             <button type="button" onClick={saveMediaReferences} disabled={Boolean(busy)}>{busy === "media" ? "권리 상태 저장 중..." : "권리 목록 저장"}</button>
-            <button type="button" className="primary" onClick={prepareProductization} disabled={Boolean(busy)}>{busy === "productization" ? "트렌드·대본·플랫폼 패키지 생성 중..." : "쇼핑 쇼츠 상품화 준비"}</button>
+            <button type="button" className="source-mix-button" onClick={generateSourceMix} disabled={Boolean(busy) || !mediaReferences.some((item) => item.includeInMixAnalysis)}>{busy === "source-mix" ? "AI 믹스 설계 중..." : "선택 소스로 AI 짜집기 설계"}</button>
+            {trendIntelligence && commercePackage && <button type="button" onClick={() => prepareProductization(true)} disabled={Boolean(busy)}>전체 AI 결과 다시 생성</button>}
+            <button type="button" className="primary" onClick={() => prepareProductization(false)} disabled={Boolean(busy)}>{busy === "productization" ? "병렬 생성 중..." : trendIntelligence && commercePackage ? "빠르게 최신 결과 확인" : "쇼핑 쇼츠 상품화 준비"}</button>
           </div>
 
-          {trendIntelligence && <div className="trend-intelligence-grid">
+          {sourceMixPlan && <section className="selected-source-mix" id="shorts-ai-editor">
+            <div className="selected-source-mix-head"><div><span className="eyebrow">AI SELECTED SOURCE MIX</span><h4>{sourceMixPlan.title}</h4><p>대표님이 고른 {sourceMixPlan.selectedReferenceIds.length}개 소스 → {sourceMixPlan.cuts.length}개 컷 · 총 {sourceMixPlan.totalDurationSeconds}초</p></div><button type="button" onClick={generateSourceMix} disabled={Boolean(busy)}>믹스 다시 설계</button></div>
+            <div className="selected-source-timeline">{sourceMixPlan.cuts.map((cut) => {
+              const reference = mediaReferences.find((item) => item.id === cut.referenceId);
+              return <article key={`${cut.order}-${cut.startSecond}`} className={`mix-${cut.decision}`}>
+                <b>{cut.order}</b><span>{cut.startSecond.toFixed(1)}–{(cut.startSecond + cut.durationSeconds).toFixed(1)}초</span>
+                <em>{cut.decision === "use-licensed" ? "허가 원본 사용" : cut.decision === "recreate" ? "새로 촬영·생성" : "새 AI 장면"}</em>
+                <h5>{cut.role}</h5><p>{cut.direction}</p><small>{reference ? `${reference.platform} · ${reference.title || "선택 소스"}` : "상품 사진 기반 새 장면"}{cut.frameIndex ? ` · 프레임 ${cut.frameIndex}` : ""}</small><i>{cut.subtitleIntent}</i>
+              </article>;
+            })}</div>
+            <p className="source-mix-safety"><b>권리·품질 규칙:</b> {sourceMixPlan.safetySummary}</p>
+          </section>}
+
+          {trendIntelligence && <div className="trend-intelligence-grid" id={sourceMixPlan ? undefined : "shorts-ai-editor"}>
             <article><span>중국어 탐색 키워드</span><div className="keyword-chip-list">{trendIntelligence.chineseKeywords.map((keyword) => <div key={keyword.simplifiedChinese}><b>{keyword.simplifiedChinese}</b><small>{keyword.koreanMeaning} · {keyword.searchIntent}</small></div>)}</div></article>
             <article><span>도우인·샤오홍슈 바로 찾기</span><div className="discovery-link-list">{trendIntelligence.discoveryLinks.map((link) => <a key={`${link.platform}-${link.keyword}`} href={link.url} target="_blank" rel="noreferrer"><b>{link.platform === "douyin" ? "도우인" : "샤오홍슈"}</b><small>{link.keyword}</small></a>)}</div><p>{trendIntelligence.referenceRule}</p></article>
             <article className="shot-plan"><span>AI 장면 감독 · 새로 설계한 컷</span><ol>{trendIntelligence.originalShotPlan.map((shot) => <li key={`${shot.order}-${shot.role}`}><b>{shot.order}. {shot.role}</b><em>{shot.durationSeconds}초 · {shot.assetType}</em><p>{shot.camera} · {shot.direction}</p></li>)}</ol></article>
           </div>}
         </section>
 
-        <section className="commerce-package-panel">
+        <section className="commerce-package-panel" id="shorts-voice">
           <div className="commerce-package-head">
             <div><span className="eyebrow">ONE IMAGE → SALES PACKAGE</span><h3>한국형 대본·음성·썸네일·게시정보</h3><p>사진을 다시 올릴 필요 없이 이 프로젝트의 상품 사실자료로 판매 패키지를 만듭니다.</p></div>
             <div className="commerce-package-actions">
@@ -818,13 +1156,14 @@ export default function CreativeStudioPro() {
               <b>CTA</b><p>{commercePackage.cta}</p>
               <div className="content-approval-box"><b>대표 품질 승인</b><small>저작권 · 상품 일치 · 허위 표현 · 자막 · 첫 3초 훅</small><button type="button" onClick={approveContent} disabled={Boolean(busy) || selectedHookIndex === null || contentApproved}>{contentApproved ? "콘텐츠 승인 완료" : busy === "content-approval" ? "승인 검사 중..." : "선택한 훅으로 승인"}</button></div>
             </article>
-            <article className="commerce-thumbnail-card">
+            <article className="commerce-thumbnail-card" id="shorts-thumbnail">
               <span>정확한 글자로 만드는 썸네일 3안</span>
               <div className="thumbnail-option-list">{commercePackage.thumbnailOptions.map((thumbnail, index) => <div key={`${thumbnail.headline}-${index}`} className={`thumbnail-option ${thumbnail.layout}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 {productPreviewUrl && <img src={productPreviewUrl} alt="상품 썸네일 참고" />}
                 <div><strong>{thumbnail.headline}</strong><em>{thumbnail.accent}</em></div>
                 {thumbnail.layout === "benefit-arrow" && <i>➜</i>}
+                <a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=thumbnail&index=${index}`}>SVG 저장</a>
               </div>)}</div>
             </article>
             <article className="commerce-meta-card">
@@ -846,7 +1185,7 @@ export default function CreativeStudioPro() {
           {selected.settings?.voiceAudioUrl && <div className="voice-preview"><b>AI 한국어 음성 · {selected.settings.voiceName || "기본 음성"}</b><audio src={selected.settings.voiceAudioUrl} controls /></div>}
         </section>
 
-        <div className="export-bar"><div><b>CapCut·게시 편집 자료</b><span>정확한 자막, 장면 순서와 판매 문구를 내려받습니다.</span></div><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=srt`}>SRT 자막</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=guide`}>CapCut 안내서</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=package`}>게시 패키지</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export`}>편집 JSON</a></div>
+        <div className="export-bar" id="shorts-export"><div><b>CapCut·게시 편집 자료</b><span>정확한 자막, 컷 유지·제거, 믹스 순서, 음성·BGM·썸네일·판매 문구를 내려받습니다.</span></div><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=srt`}>SRT 자막</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=guide`}>CapCut 안내서</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=capcut`}>CapCut 편집 JSON</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=package`}>게시 패키지</a></div>
 
         <div className="scene-grid quality-scene-grid">{scenes.map((scene) => {
           const report = scene.quality_report;

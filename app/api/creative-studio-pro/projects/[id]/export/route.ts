@@ -38,6 +38,15 @@ function createCommerceSrt(value: unknown) {
   }).filter((block) => block.trim()).join("\n\n") + "\n";
 }
 
+function escapeXml(value: unknown) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
@@ -53,6 +62,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       ? project.settings as Record<string, unknown>
       : {};
     const mediaReferences = normalizeMediaReferences(settings.mediaReferences);
+    const analyzedReferences = mediaReferences.filter((item) => item.analysis);
+    const sourceMixPlan = settings.sourceMixPlan && typeof settings.sourceMixPlan === "object" && !Array.isArray(settings.sourceMixPlan)
+      ? settings.sourceMixPlan as Record<string, unknown>
+      : null;
     if (format === "srt") {
       const commerce = settings.commercePackage && typeof settings.commercePackage === "object" && !Array.isArray(settings.commercePackage)
         ? settings.commercePackage as Record<string, unknown>
@@ -62,6 +75,42 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         headers: {
           "Content-Type": "application/x-subrip; charset=utf-8",
           "Content-Disposition": `attachment; filename="${safeName}.srt"`,
+        },
+      });
+    }
+
+    if (format === "thumbnail") {
+      const commerce = settings.commercePackage && typeof settings.commercePackage === "object" && !Array.isArray(settings.commercePackage)
+        ? settings.commercePackage as Record<string, unknown>
+        : {};
+      const options = Array.isArray(commerce.thumbnailOptions) ? commerce.thumbnailOptions : [];
+      if (!options.length) return NextResponse.json({ success: false, message: "먼저 판매 패키지를 생성해주세요." }, { status: 400 });
+      const requestedIndex = Math.max(0, Math.min(options.length - 1, Number(new URL(request.url).searchParams.get("index") || 0)));
+      const option = options[requestedIndex] && typeof options[requestedIndex] === "object"
+        ? options[requestedIndex] as Record<string, unknown>
+        : {};
+      const vertical = project.ratio === "720:1280";
+      const width = vertical ? 1080 : 1280;
+      const height = vertical ? 1920 : 720;
+      const imageUrl = Array.isArray(project.reference_image_urls) && project.reference_image_urls[0]
+        ? String(project.reference_image_urls[0])
+        : String(project.source_image_url || "");
+      const panelY = Math.round(height * .67);
+      const headlineSize = vertical ? 82 : 66;
+      const accentSize = vertical ? 46 : 36;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#dbeafe"/><stop offset=".5" stop-color="#ede9fe"/><stop offset="1" stop-color="#fdf2f8"/></linearGradient><linearGradient id="panel" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0f172a" stop-opacity=".96"/><stop offset="1" stop-color="#312e81" stop-opacity=".94"/></linearGradient></defs>
+<rect width="${width}" height="${height}" rx="40" fill="url(#bg)"/>
+${imageUrl ? `<image href="${escapeXml(imageUrl)}" x="${Math.round(width * .08)}" y="${Math.round(height * .06)}" width="${Math.round(width * .84)}" height="${Math.round(height * .62)}" preserveAspectRatio="xMidYMid meet"/>` : ""}
+<rect x="${Math.round(width * .05)}" y="${panelY}" width="${Math.round(width * .9)}" height="${Math.round(height * .27)}" rx="34" fill="url(#panel)"/>
+<text x="${width / 2}" y="${panelY + Math.round(height * .09)}" text-anchor="middle" fill="#ffffff" font-family="Pretendard, Noto Sans KR, sans-serif" font-size="${headlineSize}" font-weight="900">${escapeXml(option.headline)}</text>
+<text x="${width / 2}" y="${panelY + Math.round(height * .17)}" text-anchor="middle" fill="#67e8f9" font-family="Pretendard, Noto Sans KR, sans-serif" font-size="${accentSize}" font-weight="800">${escapeXml(option.accent)}</text>
+<text x="${Math.round(width * .08)}" y="${Math.round(height * .965)}" fill="#4338ca" font-family="Arial, sans-serif" font-size="${vertical ? 26 : 20}" font-weight="700">GY-NEXUS · ${escapeXml(project.product_name)}</text>
+</svg>`;
+      return new Response(svg, {
+        headers: {
+          "Content-Type": "image/svg+xml; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${safeName}-thumbnail-${requestedIndex + 1}.svg"`,
         },
       });
     }
@@ -84,6 +133,26 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         "",
         "최종 사용 허가 소재",
         ...mediaReferences.filter((item) => item.useInFinal).map((item) => `- ${item.title || item.url} · ${item.rightsStatus} · ${item.url}`),
+        "",
+        "AI 참고영상 분석 · 유지/제거/새로 제작",
+        ...analyzedReferences.flatMap((item) => [
+          `- ${item.title || item.platform}: ${item.analysis?.sourceSummary || "분석 완료"}`,
+          ...(item.analysis?.sceneDecisions || []).map((decision) => `  프레임 ${decision.frameIndex} · ${decision.decision} · ${decision.suggestedDurationSeconds}초 · ${decision.role} · ${decision.reason}`),
+        ]),
+        "",
+        "AI 영상 믹스 설계",
+        ...(sourceMixPlan && Array.isArray(sourceMixPlan.cuts)
+          ? sourceMixPlan.cuts.map((rawCut) => {
+            const cut = rawCut && typeof rawCut === "object" && !Array.isArray(rawCut) ? rawCut as Record<string, unknown> : {};
+            return `${cut.order}. ${cut.startSecond}초부터 ${cut.durationSeconds}초 · ${cut.role} · ${cut.decision} · ${cut.direction}`;
+          })
+          : []),
+        ...analyzedReferences.flatMap((item) => (item.analysis?.mixPlan || []).map((shot) => `${shot.order}. ${shot.durationSeconds}초 · ${shot.role} · ${shot.source} · ${shot.direction}`)),
+        "",
+        `자막 스타일: ${String(settings.subtitleStyle || "bold-pop")}`,
+        `배경음악 분위기: ${String(settings.musicMood || "modern-corporate")}`,
+        `효과음: ${String(settings.sfxMode || "recommended")}`,
+        `한국어 음성: ${String(settings.voiceAudioUrl || "미생성")}`,
         "",
         "장면 목록",
         ...(scenes || []).map((scene) => `${scene.scene_number}. ${scene.start_second}–${scene.end_second}초 · ${scene.role}\n   자막: ${scene.subtitle_text || "없음"}\n   클립: ${scene.video_url || "아직 생성되지 않음"}`),
@@ -145,8 +214,24 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       });
     }
 
+    const commerce = settings.commercePackage && typeof settings.commercePackage === "object" && !Array.isArray(settings.commercePackage)
+      ? settings.commercePackage as Record<string, unknown>
+      : {};
+    const licensedFinalAssets = mediaReferences.filter((item) => item.useInFinal && item.rightsStatus !== "unverified");
+    const editTimeline = (scenes || []).map((scene) => ({
+      order: scene.scene_number,
+      startSecond: scene.start_second,
+      endSecond: scene.end_second,
+      durationSeconds: Math.max(0, Number(scene.end_second) - Number(scene.start_second)),
+      role: scene.role,
+      subtitle: scene.subtitle_text,
+      narration: scene.narration,
+      imageUrl: scene.selected_image_url,
+      imageQualityScore: scene.quality_score,
+      clipUrl: scene.video_url,
+    }));
     const manifest = {
-      version: "GY-SHORTS-QUALITY-1.0",
+      version: format === "capcut" ? "GY-CAPCUT-PROJECT-2.0" : "GY-SHORTS-QUALITY-2.0",
       exportedAt: new Date().toISOString(),
       project: {
         id: project.id,
@@ -166,32 +251,46 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         commercePackage: settings.commercePackage || null,
         voiceAudioUrl: settings.voiceAudioUrl || null,
         trendIntelligence: settings.trendIntelligence || null,
+        sourceMixPlan,
         contentApproval: {
           approvedAt: settings.contentApprovedAt || null,
           selectedHookIndex: settings.selectedHookIndex ?? null,
           checklist: settings.contentApprovalChecklist || null,
         },
         mediaReferences,
-        licensedFinalAssets: mediaReferences.filter((item) => item.useInFinal && item.rightsStatus !== "unverified"),
+        licensedFinalAssets,
         referenceImageUrls: project.reference_image_urls || [],
         qualityThreshold: project.quality_threshold,
       },
-      scenes: (scenes || []).map((scene) => ({
-        number: scene.scene_number,
-        startSecond: scene.start_second,
-        endSecond: scene.end_second,
-        role: scene.role,
-        subtitle: scene.subtitle_text,
-        narration: scene.narration,
-        imageUrl: scene.selected_image_url,
-        imageQualityScore: scene.quality_score,
-        clipUrl: scene.video_url,
-      })),
+      editor: {
+        canvas: project.ratio === "720:1280" ? { width: 720, height: 1280, fps: 30 } : { width: 1280, height: 720, fps: 30 },
+        timeline: editTimeline,
+        subtitleCues: Array.isArray(commerce.subtitleCues) ? commerce.subtitleCues : [],
+        subtitleStyle: settings.subtitleStyle || "bold-pop",
+        voiceAudioUrl: settings.voiceAudioUrl || null,
+        voiceName: settings.voiceName || null,
+        musicMood: settings.musicMood || "modern-corporate",
+        sfxMode: settings.sfxMode || "recommended",
+        thumbnailOptions: Array.isArray(commerce.thumbnailOptions) ? commerce.thumbnailOptions : [],
+        licensedAssetUrls: licensedFinalAssets.map((item) => item.url),
+        analyzedReferencePlans: analyzedReferences.map((item) => ({
+          id: item.id,
+          title: item.title,
+          rightsStatus: item.rightsStatus,
+          mayUseSourceInFinal: item.useInFinal && item.rightsStatus !== "unverified",
+          selectedKeywords: item.selectedKeywords,
+          sceneDecisions: item.analysis?.sceneDecisions || [],
+          mixPlan: item.analysis?.mixPlan || [],
+          copyrightSafety: item.analysis?.copyrightSafety || "",
+        })),
+        selectedSourceMix: sourceMixPlan,
+      },
+      scenes: editTimeline,
     };
     return new NextResponse(JSON.stringify(manifest, null, 2), {
       headers: {
         "Content-Type": "application/json; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${safeName}-edit-manifest.json"`,
+        "Content-Disposition": `attachment; filename="${safeName}-${format === "capcut" ? "capcut-project" : "edit-manifest"}.json"`,
       },
     });
   } catch (error) {

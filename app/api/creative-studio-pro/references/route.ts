@@ -4,7 +4,6 @@ import { buildStoragePath, uploadBuffer } from "@/lib/creative-studio/storage";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const MAX_FILES = 4;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const allowedTypes = new Map([
   ["image/png", "png"],
@@ -16,16 +15,16 @@ export async function POST(request: Request) {
   try {
     const form = await request.formData();
     const files = form.getAll("images").filter((item): item is File => item instanceof File);
-    if (!files.length || files.length > MAX_FILES) {
+    const analysisMode = String(form.get("purpose") || "") === "analysis";
+    const maxFiles = analysisMode ? 8 : 4;
+    if (!files.length || files.length > maxFiles) {
       return NextResponse.json(
-        { success: false, message: "상품 사진을 1~4장 선택해주세요. 정확도를 위해 2장 이상을 권장합니다." },
+        { success: false, message: analysisMode ? "분석 프레임을 1~8장 선택해주세요." : "상품 사진을 1~4장 선택해주세요. 정확도를 위해 2장 이상을 권장합니다." },
         { status: 400 },
       );
     }
 
-    const urls: string[] = [];
-    for (let index = 0; index < files.length; index += 1) {
-      const file = files[index];
+    for (const file of files) {
       const extension = allowedTypes.get(file.type as "image/png" | "image/jpeg" | "image/webp");
       if (!extension) {
         return NextResponse.json(
@@ -39,10 +38,13 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
+    }
 
+    const urls = await Promise.all(files.map(async (file, index) => {
+      const extension = allowedTypes.get(file.type as "image/png" | "image/jpeg" | "image/webp")!;
       const path = buildStoragePath({
         folder: "references",
-        title: `product-reference-${index + 1}-${file.name}`,
+        title: `${analysisMode ? "analysis-frame" : "product-reference"}-${index + 1}-${file.name}`,
         extension,
       });
       const assetUrl = await uploadBuffer({
@@ -50,8 +52,8 @@ export async function POST(request: Request) {
         path,
         contentType: file.type,
       });
-      urls.push(assetUrl);
-    }
+      return assetUrl;
+    }));
 
     return NextResponse.json({ success: true, urls });
   } catch (error) {

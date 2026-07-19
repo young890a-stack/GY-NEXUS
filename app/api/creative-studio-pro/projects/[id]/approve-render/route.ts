@@ -17,7 +17,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
     if (rightsViolations.length > 0) {
       return NextResponse.json({
         success: false,
-        message: `권리 미확인 소재는 최종 영상에 사용할 수 없습니다: ${rightsViolations.join(", ")}`,
+        message: `권리 미확인 자료 또는 페이지 링크는 최종 원본 컷으로 사용할 수 없습니다: ${rightsViolations.join(", ")}`,
       }, { status: 400 });
     }
     if (!settings.contentApprovedAt) {

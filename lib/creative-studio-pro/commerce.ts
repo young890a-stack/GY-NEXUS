@@ -228,10 +228,10 @@ export async function generateCommercePackage(input: {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY가 없습니다.");
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const model = process.env.OPENAI_STRATEGY_MODEL || process.env.OPENAI_QUALITY_MODEL || "gpt-5.6-sol";
+  const model = process.env.OPENAI_FAST_MODEL || process.env.OPENAI_STRATEGY_MODEL || process.env.OPENAI_QUALITY_MODEL || "gpt-5.6-sol";
   const response = await openai.responses.create({
     model,
-    reasoning: { effort: "high" },
+    reasoning: { effort: "medium" },
     input: [{
       role: "user",
       content: [{
@@ -300,8 +300,9 @@ export async function generateCommercePackage(input: {
   ) {
     throw new Error("쇼핑 콘텐츠 패키지 형식이 올바르지 않습니다.");
   }
+  const auditModel = process.env.OPENAI_QUALITY_MODEL || model;
   const auditResponse = await openai.responses.create({
-    model,
+    model: auditModel,
     reasoning: { effort: "high" },
     input: [{
       role: "user",

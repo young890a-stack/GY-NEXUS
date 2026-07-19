@@ -39,6 +39,7 @@ const navigationGroups: Group[] = [
       { icon: "plus", ko: "상품 등록", en: "Add Product", href: "/admin/products/new" },
       { icon: "download", ko: "상품 자동 등록", en: "Product Import", href: "/admin/import" },
       { icon: "factory", ko: "AI 콘텐츠 공장", en: "AI Content Factory", href: "/admin/content-factory" },
+      { icon: "play", ko: "쇼핑 쇼츠 센터", en: "Shopping Shorts Center", href: "/admin/shopping-shorts" },
       { icon: "palette", ko: "Creative Studio", en: "Creative Studio", href: "/admin/creative-studio" },
       { icon: "sparkles", ko: "Creative Studio Pro", en: "Creative Studio Pro", href: "/admin/creative-studio-pro" },
       { icon: "dna", ko: "Product DNA Engine", en: "Product DNA Engine", href: "/admin/product-dna" },

@@ -1,0 +1,29 @@
+GY-NEXUS SHOPPING SHORTS STANDALONE V2.1
+Build date: 2026-07-19
+
+VALIDATION
+- TypeScript: PASS
+- ESLint: PASS, 0 errors and 7 pre-existing warnings
+- Next.js production build: PASS
+- FFmpeg worker syntax: PASS
+- Admin route: /admin/shopping-shorts
+- API route: /api/creative-studio-pro/projects/[id]/source-mix
+- API route: /api/creative-studio-pro/reference-videos
+- API route: /api/creative-studio-pro/china-connections
+
+NEW WORKFLOW
+- Dedicated Douyin/Xiaohongshu source library
+- Keyword search launch for both platforms
+- Share-page URL collection
+- Direct signed upload for licensed MP4/WEBM/MOV up to 500MB
+- User-controlled AI mix selection per source
+- Multi-source 15-30 second AI cut timeline
+- Licensed/recreate/generated decision per cut
+- Rights-safe rendering of licensed uploaded files only
+- CapCut manifest export includes selected source mix
+
+PLATFORM LIMITS
+- No unofficial protected-video scraping or downloading
+- Douyin official-account functions require app review and user authorization
+- Xiaohongshu functions stay within approved official API scopes
+

@@ -19,10 +19,21 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     const { data: project, error } = await supabase.from("video_projects").select("id,settings").eq("id", id).single();
     if (error || !project) throw error || new Error("프로젝트를 찾을 수 없습니다.");
     const settings = record(project.settings);
+    const savedReferences = normalizeMediaReferences(settings.mediaReferences);
+    if (JSON.stringify(savedReferences) === JSON.stringify(references)) {
+      return NextResponse.json({
+        success: true,
+        unchanged: true,
+        references,
+        message: "변경된 소재 정보가 없어 기존 검수 결과를 그대로 유지했습니다.",
+      });
+    }
     const nextSettings = {
       ...settings,
       mediaReferences: references,
       mediaReferencesUpdatedAt: new Date().toISOString(),
+      sourceMixPlan: null,
+      sourceMixPlanUpdatedAt: null,
       contentApprovedAt: null,
       contentApprovalChecklist: null,
       selectedHookIndex: null,

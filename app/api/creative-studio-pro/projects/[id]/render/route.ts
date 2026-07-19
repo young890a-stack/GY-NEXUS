@@ -14,7 +14,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
       ? project.settings as Record<string, unknown>
       : {};
     const rightsViolations = finalUseRightsViolations(settings.mediaReferences);
-    if (rightsViolations.length > 0) return NextResponse.json({ success: false, message: `권리 미확인 소재가 최종 사용으로 선택되어 있습니다: ${rightsViolations.join(", ")}` }, { status: 400 });
+    if (rightsViolations.length > 0) return NextResponse.json({ success: false, message: `권리 미확인 자료 또는 페이지 링크가 최종 원본 컷으로 선택되어 있습니다: ${rightsViolations.join(", ")}` }, { status: 400 });
     if (!settings.contentApprovedAt) return NextResponse.json({ success: false, message: "대표 콘텐츠 품질 승인 후 최종 MP4를 만들 수 있습니다." }, { status: 400 });
     if (!scenes?.length || scenes.some((scene) => scene.status !== "completed" || !scene.video_url)) return NextResponse.json({ success: false, message: "모든 장면 영상을 먼저 생성해주세요." }, { status: 400 });
     const licensedFinalAssets = normalizeMediaReferences(settings.mediaReferences)

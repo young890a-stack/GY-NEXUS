@@ -21,6 +21,7 @@ export type ProProjectInput = {
   style: ProStyle;
   subtitleMode: SubtitleMode;
   voiceMode: VoiceMode;
+  voicePreset?: "marin" | "coral" | "shimmer" | "cedar" | "onyx" | "echo";
   musicMood: string;
   subtitleStyle?: SubtitleStyle;
   thumbnailStyle?: ThumbnailStyle;
