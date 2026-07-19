@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { finalUseRightsViolations } from "@/lib/creative-studio-pro/integration";
 const ALLOWED_CHANNELS = new Set(["youtube", "blogger", "naver", "wordpress", "webhook"]);
 export async function GET() { try { const supabase = createAdminClient(); const { data, error } = await supabase.from("publishing_jobs").select("*").order("created_at", { ascending: false }).limit(200); if (error) throw error; return NextResponse.json({ success: true, jobs: data || [] }); } catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "게시 작업 조회 실패" }, { status: 500 }); } }
 export async function POST(request: NextRequest) {
@@ -10,8 +11,21 @@ export async function POST(request: NextRequest) {
     if (!channels.length || channels.some((channel) => !ALLOWED_CHANNELS.has(channel))) return NextResponse.json({ success: false, message: "지원하지 않는 게시 채널이 포함되어 있습니다." }, { status: 400 });
     if (!title || !content) return NextResponse.json({ success: false, message: "제목과 본문을 입력해주세요." }, { status: 400 });
     if (Number.isNaN(scheduledAt.getTime())) return NextResponse.json({ success: false, message: "예약 시간이 올바르지 않습니다." }, { status: 400 });
+    const supabase = createAdminClient();
+    const sourceProjectId = String(body.payload?.sourceProjectId || "").trim();
+    if (sourceProjectId) {
+      const { data: project, error: projectError } = await supabase.from("video_projects").select("id,final_video_url,settings").eq("id", sourceProjectId).single();
+      if (projectError || !project) return NextResponse.json({ success: false, message: "게시 원본 프로젝트를 찾을 수 없습니다." }, { status: 400 });
+      const settings = project.settings && typeof project.settings === "object" && !Array.isArray(project.settings)
+        ? project.settings as Record<string, unknown>
+        : {};
+      if (!settings.contentApprovedAt) return NextResponse.json({ success: false, message: "대표 품질 승인이 완료된 콘텐츠만 게시 대기열에 등록할 수 있습니다." }, { status: 400 });
+      if (!project.final_video_url || String(body.payload?.videoUrl || "") !== String(project.final_video_url)) return NextResponse.json({ success: false, message: "승인 프로젝트의 최종 영상 URL과 게시 영상이 일치하지 않습니다." }, { status: 400 });
+      const rightsViolations = finalUseRightsViolations(settings.mediaReferences);
+      if (rightsViolations.length) return NextResponse.json({ success: false, message: "권리 미확인 소재가 포함된 프로젝트는 게시할 수 없습니다." }, { status: 400 });
+    }
     const rows = channels.map((channel) => ({ ai_content_id: body.aiContentId || null, channel, title, content, status: "queued", scheduled_at: scheduledAt.toISOString(), payload: body.payload || {}, attempts: 0, max_attempts: 3 }));
-    const supabase = createAdminClient(); const { data, error } = await supabase.from("publishing_jobs").insert(rows).select("*"); if (error) throw error;
+    const { data, error } = await supabase.from("publishing_jobs").insert(rows).select("*"); if (error) throw error;
     return NextResponse.json({ success: true, jobs: data || [] });
   } catch (error) { return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "게시 작업 생성 실패" }, { status: 500 }); }
 }

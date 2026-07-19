@@ -1,0 +1,39 @@
+GY-NEXUS · SHOPPING SHORTS PRODUCTIZATION CENTER
+Build date: 2026-07-19 UTC
+
+Implemented
+- Approved/popular stored product import into Creative Studio Pro
+- Coupang/Temu manual affiliate-link operation before Coupang API approval
+- Korean product name to Simplified Chinese discovery keywords
+- Direct Douyin and Xiaohongshu search links
+- Media rights ledger with five rights states
+- Forced exclusion of unverified media from final render payload
+- Original 0.7–2.5 second shot plan, hooks and selling angles
+- YouTube, Instagram, Douyin and Xiaohongshu publishing packages
+- Xiaohongshu 6–9 image-note cards
+- Stable GY showroom product code
+- Deterministic exact-script SRT cues with millisecond timing
+- Selected hook is inserted into the final voice script before SRT and TTS
+- Independent second-pass AI audit for claims, disclosure, experience language and duration
+- Three-hook owner selection and quality approval gate
+- Runway approval, final render and publishing rights gates
+- YouTube private publishing queue integration
+- CapCut guide and extended edit JSON export
+
+Verification
+- npm run typecheck: PASS
+- npm run lint: PASS with 0 errors and 7 pre-existing warnings outside this change
+- npm run build: PASS
+- Next.js production compile: PASS
+- Static page generation: 75/75 PASS
+- New API routes visible in production build:
+  /api/creative-studio-pro/projects/[id]/media-references
+  /api/creative-studio-pro/projects/[id]/productization
+  /api/creative-studio-pro/projects/[id]/content-approval
+
+Operating boundaries
+- Douyin/Xiaohongshu protected pages are not scraped or downloaded.
+- Discovery uses Chinese keywords and official search-result URLs.
+- Reference notes inform original scene design; the system does not falsely claim to watch protected social videos.
+- Instagram/Douyin/Xiaohongshu publishing remains official-app/manual until account APIs are authorized.
+- Automatic final MP4 composition still requires VIDEO_WORKER_URL, matching the existing architecture.

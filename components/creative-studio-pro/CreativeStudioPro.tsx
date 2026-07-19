@@ -25,6 +25,13 @@ type Project = {
     commercePackage?: CommercePackage;
     voiceAudioUrl?: string;
     voiceName?: string;
+    gyProductCode?: string;
+    mediaReferences?: MediaReference[];
+    trendIntelligence?: TrendIntelligence;
+    selectedHookIndex?: number;
+    selectedHook?: string;
+    contentApprovedAt?: string;
+    contentApprovalChecklist?: Record<string, boolean>;
     visualProfile?: {
       identitySummary?: string;
       referenceCoverageScore?: number;
@@ -35,7 +42,18 @@ type Project = {
   created_at: string;
 };
 
+type SavedProduct = {
+  id: string;
+  title: string;
+  description?: string | null;
+  image_url?: string | null;
+  affiliate_url?: string | null;
+  platform?: string | null;
+  price_text?: string | null;
+};
+
 type CommercePackage = {
+  productCode: string;
   title: string;
   hookOptions: string[];
   voiceover: string;
@@ -50,6 +68,53 @@ type CommercePackage = {
   }>;
   verifiedClaims: string[];
   cautions: string[];
+  subtitleCues: Array<{ index: number; startSecond: number; endSecond: number; text: string }>;
+  qualityAudit?: {
+    approved: boolean;
+    score: number;
+    summary: string;
+    issues: string[];
+    checks: { claimSafety: boolean; affiliateDisclosure: boolean; directExperienceLanguage: boolean; durationFit: boolean };
+  };
+  platformVersions: {
+    youtube: { title: string; description: string; script: string; hashtags: string[] };
+    instagram: { caption: string; script: string; hashtags: string[] };
+    douyin: { title: string; caption: string; scriptSimplifiedChinese: string; hashtags: string[] };
+    xiaohongshu: {
+      title: string;
+      body: string;
+      hashtags: string[];
+      cards: Array<{ order: number; headline: string; body: string; visualDirection: string }>;
+    };
+  };
+};
+
+type RightsStatus = "owned" | "seller-provided" | "affiliate-provided" | "permission-confirmed" | "unverified";
+type MediaReference = {
+  id: string;
+  platform: "douyin" | "xiaohongshu" | "coupang" | "temu" | "owned" | "other";
+  url: string;
+  title: string;
+  rightsStatus: RightsStatus;
+  useInFinal: boolean;
+  notes: string;
+  createdAt: string;
+};
+
+type TrendIntelligence = {
+  chineseKeywords: Array<{ simplifiedChinese: string; koreanMeaning: string; searchIntent: string }>;
+  discoveryLinks: Array<{ platform: "douyin" | "xiaohongshu"; keyword: string; url: string }>;
+  hookPatterns: string[];
+  sellingAngles: string[];
+  originalShotPlan: Array<{
+    order: number;
+    durationSeconds: number;
+    role: string;
+    camera: string;
+    direction: string;
+    assetType: "photo" | "licensed-video" | "generated-scene";
+  }>;
+  referenceRule: string;
 };
 
 type QualityMetrics = {
@@ -102,7 +167,7 @@ type Scene = {
   error_message?: string | null;
 };
 
-type BusyState = "create" | "package" | "voice" | "image" | "images" | "approve" | "scene" | "all" | "render" | null;
+type BusyState = "create" | "package" | "productization" | "media" | "content-approval" | "voice" | "image" | "images" | "approve" | "scene" | "all" | "render" | "publish" | null;
 
 const styles = [
   ["cinematic-product", "영화형 상품 광고"],
@@ -120,6 +185,14 @@ const qualityLabels: Record<string, string> = {
   revision_required: "자동 재생성",
   hold: "대표님 확인 필요",
   failed: "검수 실패",
+};
+
+const rightsLabels: Record<RightsStatus, string> = {
+  owned: "직접 촬영",
+  "seller-provided": "판매자 제공",
+  "affiliate-provided": "제휴센터 제공",
+  "permission-confirmed": "사용 허가 확인",
+  unverified: "권리 미확인",
 };
 
 export default function CreativeStudioPro() {
@@ -147,11 +220,23 @@ export default function CreativeStudioPro() {
   });
   const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [savedProducts, setSavedProducts] = useState<SavedProduct[]>([]);
+  const [savedProductId, setSavedProductId] = useState("");
   const [selected, setSelected] = useState<Project | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [busy, setBusy] = useState<BusyState>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [mediaReferences, setMediaReferences] = useState<MediaReference[]>([]);
+  const [mediaDraft, setMediaDraft] = useState({
+    platform: "douyin" as MediaReference["platform"],
+    url: "",
+    title: "",
+    rightsStatus: "unverified" as RightsStatus,
+    useInFinal: false,
+    notes: "",
+  });
+  const [selectedHookIndex, setSelectedHookIndex] = useState<number | null>(null);
 
   const previewUrls = useMemo(() => referenceFiles.map((file) => URL.createObjectURL(file)), [referenceFiles]);
   useEffect(() => () => previewUrls.forEach((url) => URL.revokeObjectURL(url)), [previewUrls]);
@@ -163,6 +248,10 @@ export default function CreativeStudioPro() {
   const videoProgress = scenes.length ? Math.round((completed / scenes.length) * 100) : 0;
   const visualProfile = selected?.settings?.visualProfile;
   const commercePackage = selected?.settings?.commercePackage;
+  const trendIntelligence = selected?.settings?.trendIntelligence;
+  const contentApproved = Boolean(selected?.settings?.contentApprovedAt);
+  const usableMediaCount = mediaReferences.filter((item) => item.useInFinal && item.rightsStatus !== "unverified").length;
+  const inspirationMediaCount = mediaReferences.length - usableMediaCount;
   const singlePhotoMode = form.sourceMode === "single-photo-commerce";
   const productPreviewUrl = selected?.settings?.referenceImageUrls?.[0] || selected?.source_image_url || "";
 
@@ -172,6 +261,12 @@ export default function CreativeStudioPro() {
     if (data.success) setProjects(data.projects);
   }
 
+  async function loadSavedProducts() {
+    const response = await fetch("/api/products", { cache: "no-store" });
+    const data = await response.json();
+    if (response.ok) setSavedProducts(Array.isArray(data.products) ? data.products.slice(0, 100) : []);
+  }
+
   async function openProject(project: Pick<Project, "id">) {
     setError("");
     const response = await fetch(`/api/creative-studio-pro/projects/${project.id}`, { cache: "no-store" });
@@ -179,6 +274,8 @@ export default function CreativeStudioPro() {
     if (data.success) {
       setSelected(data.project);
       setScenes(data.scenes);
+      setMediaReferences(Array.isArray(data.project.settings?.mediaReferences) ? data.project.settings.mediaReferences : []);
+      setSelectedHookIndex(Number.isInteger(data.project.settings?.selectedHookIndex) ? data.project.settings.selectedHookIndex : null);
     } else {
       setError(data.message);
     }
@@ -186,10 +283,28 @@ export default function CreativeStudioPro() {
 
   useEffect(() => {
     void loadProjects();
+    void loadSavedProducts();
   }, []);
 
   function patch(key: string, value: string | number) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function importSavedProduct(productId: string) {
+    setSavedProductId(productId);
+    const product = savedProducts.find((item) => item.id === productId);
+    if (!product) return;
+    setForm((current) => ({
+      ...current,
+      title: `${product.title} 쇼핑 쇼츠`,
+      productName: product.title,
+      productDescription: product.description || "",
+      productUrl: product.affiliate_url || "",
+      affiliateUrl: product.affiliate_url || "",
+      sourceImageUrl: product.image_url || "",
+    }));
+    setMessage(`${product.platform || "저장"} 상품 정보를 작업 입력란에 불러왔습니다.`);
+    setError("");
   }
 
   function selectReferences(files: FileList | null) {
@@ -238,6 +353,105 @@ export default function CreativeStudioPro() {
       await openProject(data.project);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "프로젝트 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function addMediaReference() {
+    if (!selected) return;
+    try {
+      const parsed = new URL(mediaDraft.url.trim());
+      if (parsed.protocol !== "https:") throw new Error("HTTPS 주소만 사용할 수 있습니다.");
+      const next: MediaReference = {
+        id: `media-${Date.now()}`,
+        platform: mediaDraft.platform,
+        url: parsed.toString(),
+        title: mediaDraft.title.trim(),
+        rightsStatus: mediaDraft.rightsStatus,
+        useInFinal: mediaDraft.rightsStatus !== "unverified" && mediaDraft.useInFinal,
+        notes: mediaDraft.notes.trim(),
+        createdAt: new Date().toISOString(),
+      };
+      setMediaReferences((current) => [...current, next].slice(0, 20));
+      setMediaDraft({ platform: "douyin", url: "", title: "", rightsStatus: "unverified", useInFinal: false, notes: "" });
+      setError("");
+      setMessage("소재를 목록에 추가했습니다. ‘권리 목록 저장’을 눌러 프로젝트에 반영해주세요.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "올바른 소재 주소를 입력해주세요.");
+    }
+  }
+
+  async function persistMediaReferences() {
+    if (!selected) throw new Error("프로젝트를 먼저 선택해주세요.");
+    const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/media-references`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ references: mediaReferences }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.message);
+    setMediaReferences(data.references);
+    return data;
+  }
+
+  async function saveMediaReferences() {
+    if (!selected) return;
+    setBusy("media");
+    setError("");
+    setMessage("");
+    try {
+      const data = await persistMediaReferences();
+      await openProject(selected);
+      setMessage(data.message);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "소재 권리 목록 저장 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function prepareProductization() {
+    if (!selected) return;
+    setBusy("productization");
+    setError("");
+    setMessage("중국어 탐색 키워드와 독창적 장면 설계, 플랫폼별 판매 패키지를 만들고 있습니다.");
+    try {
+      await persistMediaReferences();
+      const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/productization`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message);
+      await openProject(selected);
+      setMessage(data.message);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "통합 상품화 준비 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function approveContent() {
+    if (!selected || selectedHookIndex === null) {
+      setError("첫 3초에 사용할 훅을 하나 선택해주세요.");
+      return;
+    }
+    const confirmed = window.confirm("저작권·상품 일치·허위 표현·한국어 자막·첫 3초 훅을 확인하고 이 콘텐츠를 승인할까요?");
+    if (!confirmed) return;
+    setBusy("content-approval");
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/content-approval`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hookIndex: selectedHookIndex }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message);
+      await openProject(selected);
+      setMessage(data.message);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "콘텐츠 품질 승인 실패");
     } finally {
       setBusy(null);
     }
@@ -400,13 +614,50 @@ export default function CreativeStudioPro() {
     }
   }
 
+  async function queueYouTube() {
+    if (!selected?.final_video_url || !commercePackage || !contentApproved) return;
+    const confirmed = window.confirm("완성 영상을 YouTube ‘비공개’ 게시 대기열에 등록할까요? 실제 업로드는 통합 게시센터에서 다시 실행합니다.");
+    if (!confirmed) return;
+    setBusy("publish");
+    setError("");
+    setMessage("");
+    try {
+      const youtube = commercePackage.platformVersions.youtube;
+      const response = await fetch("/api/publishing/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channels: ["youtube"],
+          title: youtube.title,
+          content: `${youtube.description}\n\n${commercePackage.disclosure}\n${commercePackage.cta}`,
+          scheduledAt: new Date().toISOString(),
+          payload: {
+            videoUrl: selected.final_video_url,
+            thumbnailUrl: scenes.find((scene) => scene.selected_image_url)?.selected_image_url || "",
+            tags: youtube.hashtags.map((tag) => tag.replace(/^#/, "")),
+            privacyStatus: "private",
+            sourceProjectId: selected.id,
+            gyProductCode: commercePackage.productCode,
+          },
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message);
+      setMessage("YouTube 비공개 게시 대기열에 등록했습니다. 게시센터에서 최종 실행할 수 있습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "YouTube 게시 대기열 등록 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="creative-pro-stack shorts-quality-studio">
       <section className="panel creative-pro-hero">
         <div>
-          <div className="eyebrow">GY PHOTO COMMERCE · PREMIUM SHORTS</div>
-          <h1>사진 한 장부터 프리미엄 상품 쇼츠까지 한곳에서 완성</h1>
-          <p>상품 이미지를 넣으면 Dream Y가 한국형 대본·AI 음성·장면·썸네일 문구·제목·설명·태그를 만들고, 상품 형태를 검수한 장면만 영상으로 보냅니다.</p>
+          <div className="eyebrow">GY-NEXUS · SHOPPING SHORTS PRODUCTIZATION</div>
+          <h1>상품 하나를 4개 플랫폼용 쇼핑 콘텐츠로 완성</h1>
+          <p>쿠팡·Temu 링크와 사진을 넣으면 중국어 탐색 키워드, 독창적 장면 설계, 한국형 대본·음성·자막·썸네일·게시정보를 만들고 권리와 상품 품질을 통과한 자료만 최종 영상으로 보냅니다.</p>
         </div>
         <div className="creative-pro-badge"><strong>{form.duration}초</strong><span>{form.duration / 5}개 장면</span></div>
       </section>
@@ -421,6 +672,11 @@ export default function CreativeStudioPro() {
             <button type="button" className={!singlePhotoMode ? "active" : ""} onClick={() => patch("sourceMode", "premium-multi-photo")}>
               <strong>프리미엄 2~4장</strong><span>앞·뒤·측면 자료로 실제 사용형 장면과 엄격한 상품 검수를 진행합니다.</span>
             </button>
+          </div>
+          <div className="saved-product-import">
+            <div><b>인기상품·저장 상품 불러오기</b><span>상품 소싱 센터에서 승인한 쿠팡·Temu 상품을 바로 작업 입력란에 채웁니다.</span></div>
+            <select value={savedProductId} onChange={(event) => importSavedProduct(event.target.value)}><option value="">상품 선택</option>{savedProducts.map((product) => <option key={product.id} value={product.id}>{product.platform || "기타"} · {product.title}{product.price_text ? ` · ${product.price_text}` : ""}</option>)}</select>
+            <a href="/admin/product-intelligence">인기상품 수집 센터</a>
           </div>
           <div className="form-grid">
             <label>작업명<input value={form.title} onChange={(event) => patch("title", event.target.value)} /></label>
@@ -476,7 +732,7 @@ export default function CreativeStudioPro() {
           <div className="timeline-actions quality-actions">
             <button onClick={() => prepareNext()} disabled={Boolean(busy) || imageApproved === scenes.length}>{busy === "image" ? "생성·검수 중..." : "다음 이미지 생성·검수"}</button>
             <button onClick={prepareAll} disabled={Boolean(busy) || imageApproved === scenes.length}>{busy === "images" ? "전체 검수 중..." : "전체 이미지 검수"}</button>
-            <button className="approve" onClick={approveRunway} disabled={Boolean(busy) || imageApproved !== scenes.length || Boolean(selected.render_approved)}>{selected.render_approved ? "Runway 승인됨" : busy === "approve" ? "승인 중..." : "Runway 비용 승인"}</button>
+            <button className="approve" onClick={approveRunway} disabled={Boolean(busy) || imageApproved !== scenes.length || !contentApproved || Boolean(selected.render_approved)}>{selected.render_approved ? "Runway 승인됨" : busy === "approve" ? "승인 중..." : "Runway 비용 승인"}</button>
             <button onClick={() => generateNext()} disabled={Boolean(busy) || !selected.render_approved || completed === scenes.length}>{busy === "scene" ? "영상 생성 중..." : "다음 영상 생성"}</button>
             <button onClick={generateAll} disabled={Boolean(busy) || !selected.render_approved || completed === scenes.length}>{busy === "all" ? "전체 영상 생성 중..." : "남은 영상 모두 생성"}</button>
             <button className="render" onClick={render} disabled={Boolean(busy) || completed !== scenes.length}>{busy === "render" ? "요청 중..." : "최종 MP4 합성"}</button>
@@ -495,21 +751,72 @@ export default function CreativeStudioPro() {
         </div>}
         {qualityHolds > 0 && <p className="quality-hold-note">{qualityHolds}개 장면이 상품 일치도 기준에 미달해 보류되었습니다. Runway 비용은 사용되지 않았습니다.</p>}
 
+        <section className="productization-center">
+          <div className="productization-flow" aria-label="쇼핑 쇼츠 상품화 순서">
+            <span className="done">1 · 상품 입력</span><i>→</i><span className={trendIntelligence ? "done" : ""}>2 · 상품화 준비</span><i>→</i><span className={selectedHookIndex !== null ? "done" : ""}>3 · 훅 선택</span><i>→</i><span className={contentApproved ? "done" : ""}>4 · 승인</span><i>→</i><span>5 · 게시</span>
+          </div>
+          <div className="productization-title">
+            <div><span className="eyebrow">GY-NEXUS SHOPPING SHORTS CENTER</span><h3>중국 트렌드 참고·소재 권리·4개 플랫폼 상품화</h3><p>중국 영상은 구조만 참고하고, 최종본에는 직접 촬영·판매자/제휴센터 제공·사용 허가 소재만 넣습니다.</p></div>
+            <div className="gy-product-code"><span>GY 진열장 상품번호</span><b>{selected.settings?.gyProductCode || "상품화 준비 후 생성"}</b></div>
+          </div>
+
+          <div className="rights-summary">
+            <div><b>{usableMediaCount}</b><span>최종 사용 가능</span></div>
+            <div><b>{inspirationMediaCount}</b><span>분석 참고 전용</span></div>
+            <p>권리 미확인 자료는 저장할 수 있지만 ‘최종 영상 사용’이 자동 차단됩니다.</p>
+          </div>
+
+          <div className="media-reference-form">
+            <label>플랫폼<select value={mediaDraft.platform} onChange={(event) => setMediaDraft((current) => ({ ...current, platform: event.target.value as MediaReference["platform"] }))}><option value="douyin">도우인</option><option value="xiaohongshu">샤오홍슈</option><option value="coupang">쿠팡</option><option value="temu">Temu</option><option value="owned">직접 보유</option><option value="other">기타</option></select></label>
+            <label>참고 영상·소재 HTTPS 주소<input value={mediaDraft.url} onChange={(event) => setMediaDraft((current) => ({ ...current, url: event.target.value }))} placeholder="도우인·샤오홍슈·판매자 제공 URL" /></label>
+            <label>자료 이름<input value={mediaDraft.title} onChange={(event) => setMediaDraft((current) => ({ ...current, title: event.target.value }))} placeholder="예: 수납 전후 훅 참고" /></label>
+            <label>권리 상태<select value={mediaDraft.rightsStatus} onChange={(event) => {
+              const rightsStatus = event.target.value as RightsStatus;
+              setMediaDraft((current) => ({ ...current, rightsStatus, useInFinal: rightsStatus === "unverified" ? false : current.useInFinal }));
+            }}>{Object.entries(rightsLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label className="wide">분석 메모<input value={mediaDraft.notes} onChange={(event) => setMediaDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="예: 첫 2초 문제 제시, 손 클로즈업, 전후 비교 리듬만 참고" /></label>
+            <label className="media-final-check"><input type="checkbox" checked={mediaDraft.useInFinal} disabled={mediaDraft.rightsStatus === "unverified"} onChange={(event) => setMediaDraft((current) => ({ ...current, useInFinal: event.target.checked }))} /><span>최종 영상에 사용</span></label>
+            <button type="button" onClick={addMediaReference}>소재 추가</button>
+          </div>
+
+          {mediaReferences.length > 0 && <div className="media-reference-list">{mediaReferences.map((item) => <article key={item.id} className={item.rightsStatus === "unverified" ? "unverified" : "verified"}>
+            <div><b>{item.title || item.platform}</b><a href={item.url} target="_blank" rel="noreferrer">원본 확인</a><small>{item.notes || "메모 없음"}</small></div>
+            <select value={item.rightsStatus} onChange={(event) => {
+              const rightsStatus = event.target.value as RightsStatus;
+              setMediaReferences((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, rightsStatus, useInFinal: rightsStatus === "unverified" ? false : candidate.useInFinal } : candidate));
+            }}>{Object.entries(rightsLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+            <label><input type="checkbox" checked={item.useInFinal} disabled={item.rightsStatus === "unverified"} onChange={(event) => setMediaReferences((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, useInFinal: event.target.checked } : candidate))} />최종 사용</label>
+            <button type="button" onClick={() => setMediaReferences((current) => current.filter((candidate) => candidate.id !== item.id))}>삭제</button>
+          </article>)}</div>}
+
+          <div className="productization-primary-actions">
+            <button type="button" onClick={saveMediaReferences} disabled={Boolean(busy)}>{busy === "media" ? "권리 상태 저장 중..." : "권리 목록 저장"}</button>
+            <button type="button" className="primary" onClick={prepareProductization} disabled={Boolean(busy)}>{busy === "productization" ? "트렌드·대본·플랫폼 패키지 생성 중..." : "쇼핑 쇼츠 상품화 준비"}</button>
+          </div>
+
+          {trendIntelligence && <div className="trend-intelligence-grid">
+            <article><span>중국어 탐색 키워드</span><div className="keyword-chip-list">{trendIntelligence.chineseKeywords.map((keyword) => <div key={keyword.simplifiedChinese}><b>{keyword.simplifiedChinese}</b><small>{keyword.koreanMeaning} · {keyword.searchIntent}</small></div>)}</div></article>
+            <article><span>도우인·샤오홍슈 바로 찾기</span><div className="discovery-link-list">{trendIntelligence.discoveryLinks.map((link) => <a key={`${link.platform}-${link.keyword}`} href={link.url} target="_blank" rel="noreferrer"><b>{link.platform === "douyin" ? "도우인" : "샤오홍슈"}</b><small>{link.keyword}</small></a>)}</div><p>{trendIntelligence.referenceRule}</p></article>
+            <article className="shot-plan"><span>AI 장면 감독 · 새로 설계한 컷</span><ol>{trendIntelligence.originalShotPlan.map((shot) => <li key={`${shot.order}-${shot.role}`}><b>{shot.order}. {shot.role}</b><em>{shot.durationSeconds}초 · {shot.assetType}</em><p>{shot.camera} · {shot.direction}</p></li>)}</ol></article>
+          </div>}
+        </section>
+
         <section className="commerce-package-panel">
           <div className="commerce-package-head">
             <div><span className="eyebrow">ONE IMAGE → SALES PACKAGE</span><h3>한국형 대본·음성·썸네일·게시정보</h3><p>사진을 다시 올릴 필요 없이 이 프로젝트의 상품 사실자료로 판매 패키지를 만듭니다.</p></div>
             <div className="commerce-package-actions">
               <button onClick={generatePackage} disabled={Boolean(busy)}>{busy === "package" ? "대본·메타데이터 생성 중..." : commercePackage ? "판매 패키지 다시 생성" : "판매 패키지 생성"}</button>
-              <button onClick={generateVoice} disabled={Boolean(busy) || !commercePackage}>{busy === "voice" ? "한국어 음성 생성 중..." : "AI 음성 만들기"}</button>
+              <button onClick={generateVoice} disabled={Boolean(busy) || !commercePackage || !contentApproved}>{busy === "voice" ? "한국어 음성 생성 중..." : contentApproved ? "AI 음성 만들기" : "훅 승인 후 음성 생성"}</button>
             </div>
           </div>
           {commercePackage ? <div className="commerce-package-grid">
             <article className="commerce-copy-card">
               <span>추천 제목</span><h4>{commercePackage.title}</h4>
-              <b>첫 2초 훅 3개</b>
-              <ol>{commercePackage.hookOptions.map((hook) => <li key={hook}>{hook}</li>)}</ol>
-              <b>완성 대본</b><p>{commercePackage.voiceover}</p>
+              <b>첫 3초 훅 3개 · 하나 선택</b>
+              <div className="hook-choice-list">{commercePackage.hookOptions.map((hook, index) => <button type="button" className={selectedHookIndex === index ? "selected" : ""} key={hook} onClick={() => setSelectedHookIndex(index)}><span>{index + 1}</span>{hook}</button>)}</div>
+              <b>{contentApproved ? "선택 훅이 반영된 완성 대본" : "훅 선택 전 본문 대본"}</b><p>{commercePackage.voiceover}</p>
               <b>CTA</b><p>{commercePackage.cta}</p>
+              <div className="content-approval-box"><b>대표 품질 승인</b><small>저작권 · 상품 일치 · 허위 표현 · 자막 · 첫 3초 훅</small><button type="button" onClick={approveContent} disabled={Boolean(busy) || selectedHookIndex === null || contentApproved}>{contentApproved ? "콘텐츠 승인 완료" : busy === "content-approval" ? "승인 검사 중..." : "선택한 훅으로 승인"}</button></div>
             </article>
             <article className="commerce-thumbnail-card">
               <span>정확한 글자로 만드는 썸네일 3안</span>
@@ -526,6 +833,14 @@ export default function CreativeStudioPro() {
               <b>제휴 고지</b><p>{commercePackage.disclosure}</p>
               {commercePackage.verifiedClaims.length > 0 && <><b>확인된 표현</b><ul>{commercePackage.verifiedClaims.map((claim) => <li key={claim}>{claim}</li>)}</ul></>}
               {commercePackage.cautions.length > 0 && <><b>게시 전 확인</b><ul>{commercePackage.cautions.map((caution) => <li key={caution}>{caution}</li>)}</ul></>}
+              {commercePackage.qualityAudit && <div className={commercePackage.qualityAudit.approved ? "commerce-audit pass" : "commerce-audit fail"}><b>독립 광고 검수 · {commercePackage.qualityAudit.score}점</b><p>{commercePackage.qualityAudit.summary}</p>{commercePackage.qualityAudit.issues.length > 0 && <ul>{commercePackage.qualityAudit.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}</div>}
+            </article>
+            <article className="platform-package-card">
+              <span>플랫폼별 판매 패키지</span>
+              <details open><summary>YouTube Shorts</summary><b>{commercePackage.platformVersions.youtube.title}</b><p>{commercePackage.platformVersions.youtube.description}</p></details>
+              <details><summary>Instagram Reels</summary><p>{commercePackage.platformVersions.instagram.caption}</p></details>
+              <details><summary>Douyin · 중국어 간체</summary><b>{commercePackage.platformVersions.douyin.title}</b><p>{commercePackage.platformVersions.douyin.scriptSimplifiedChinese}</p></details>
+              <details><summary>샤오홍슈 사진 노트 {commercePackage.platformVersions.xiaohongshu.cards.length}장</summary><b>{commercePackage.platformVersions.xiaohongshu.title}</b><ol>{commercePackage.platformVersions.xiaohongshu.cards.map((card) => <li key={card.order}><b>{card.order}. {card.headline}</b><p>{card.body}</p><small>{card.visualDirection}</small></li>)}</ol></details>
             </article>
           </div> : <p className="empty-commerce-package">`판매 패키지 생성`을 누르면 영상 속 기능처럼 훅·대본·썸네일·설명·태그가 한 번에 만들어집니다.</p>}
           {selected.settings?.voiceAudioUrl && <div className="voice-preview"><b>AI 한국어 음성 · {selected.settings.voiceName || "기본 음성"}</b><audio src={selected.settings.voiceAudioUrl} controls /></div>}
@@ -564,7 +879,7 @@ export default function CreativeStudioPro() {
           </article>;
         })}</div>
 
-        {selected.final_video_url && <div className="final-preview"><h3>최종 완성 영상</h3><video src={selected.final_video_url} controls playsInline /><a className="button button-primary" href={selected.final_video_url} target="_blank" rel="noreferrer">원본 열기</a></div>}
+        {selected.final_video_url && <div className="final-preview"><h3>최종 완성 영상</h3><video src={selected.final_video_url} controls playsInline /><div className="final-publish-actions"><a className="button button-primary" href={selected.final_video_url} target="_blank" rel="noreferrer">원본 열기</a><button className="button button-primary" type="button" onClick={queueYouTube} disabled={Boolean(busy) || !contentApproved || !commercePackage}>{busy === "publish" ? "대기열 등록 중..." : "YouTube 비공개 게시 대기열"}</button><a className="button button-light" href="/admin/publishing">통합 게시센터 열기</a></div></div>}
       </section>}
     </div>
   );

@@ -28,6 +28,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (sceneError) throw sceneError;
 
     const settings = record(project.settings);
+    if (!settings.contentApprovedAt) {
+      return NextResponse.json({ success: false, message: "첫 3초 훅을 선택하고 콘텐츠 품질 승인을 완료한 뒤 AI 음성을 만들어주세요." }, { status: 400 });
+    }
     const commercePackage = record(settings.commercePackage);
     const fallback = (scenes || []).map((scene) => String(scene.narration || "").trim()).filter(Boolean).join(" ");
     const script = String(commercePackage.voiceover || fallback).trim();

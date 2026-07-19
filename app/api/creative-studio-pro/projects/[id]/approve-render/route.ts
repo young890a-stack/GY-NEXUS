@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { finalUseRightsViolations } from "@/lib/creative-studio-pro/integration";
 
 export const runtime = "nodejs";
 
@@ -7,8 +8,24 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
   try {
     const { id } = await context.params;
     const supabase = createAdminClient();
-    const { data: project, error } = await supabase.from("video_projects").select("id").eq("id", id).single();
+    const { data: project, error } = await supabase.from("video_projects").select("id,settings").eq("id", id).single();
     if (error || !project) throw error || new Error("프로젝트를 찾을 수 없습니다.");
+    const settings = project.settings && typeof project.settings === "object" && !Array.isArray(project.settings)
+      ? project.settings as Record<string, unknown>
+      : {};
+    const rightsViolations = finalUseRightsViolations(settings.mediaReferences);
+    if (rightsViolations.length > 0) {
+      return NextResponse.json({
+        success: false,
+        message: `권리 미확인 소재는 최종 영상에 사용할 수 없습니다: ${rightsViolations.join(", ")}`,
+      }, { status: 400 });
+    }
+    if (!settings.contentApprovedAt) {
+      return NextResponse.json({
+        success: false,
+        message: "훅을 선택하고 저작권·상품 일치·허위 표현·자막·첫 3초 품질을 먼저 승인해주세요.",
+      }, { status: 400 });
+    }
 
     const { count } = await supabase
       .from("video_scenes")

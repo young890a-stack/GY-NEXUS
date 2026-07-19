@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateCreativeVideo } from "@/lib/creative-studio/video";
+import { finalUseRightsViolations } from "@/lib/creative-studio-pro/integration";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export async function POST(_: Request, context: { params: Promise<{ id: string }> }) {
@@ -9,6 +10,15 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
     const supabase = createAdminClient();
     const { data: project, error: projectError } = await supabase.from("video_projects").select("*").eq("id", id).single();
     if (projectError || !project) throw projectError || new Error("프로젝트를 찾을 수 없습니다.");
+    const settings = project.settings && typeof project.settings === "object" && !Array.isArray(project.settings)
+      ? project.settings as Record<string, unknown>
+      : {};
+    if (!settings.contentApprovedAt) {
+      return NextResponse.json({ success: false, message: "훅과 콘텐츠 품질을 먼저 대표 승인해주세요." }, { status: 403 });
+    }
+    if (finalUseRightsViolations(settings.mediaReferences).length) {
+      return NextResponse.json({ success: false, message: "권리 미확인 소재가 최종 사용으로 선택되어 Runway 생성을 차단했습니다." }, { status: 403 });
+    }
     if (!project.render_approved) {
       return NextResponse.json({ success: false, message: "Runway 유료 생성을 먼저 대표 승인해주세요." }, { status: 403 });
     }
