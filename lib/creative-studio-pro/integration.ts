@@ -273,6 +273,21 @@ function decodeMetadataText(value: string) {
     .trim();
 }
 
+function isoDurationSeconds(value: string) {
+  const match = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/i);
+  if (!match) return null;
+  const seconds = (Number(match[1]) || 0) * 3600 + (Number(match[2]) || 0) * 60 + (Number(match[3]) || 0);
+  return seconds > 0 && seconds <= 86400 ? Math.round(seconds) : null;
+}
+
+function firstPublicMetric(html: string, keys: string[]) {
+  for (const key of keys) {
+    const match = html.match(new RegExp(`["']${key}["']\\s*:\\s*["']?(\\d{1,12})`, "i"));
+    if (match) return Math.max(0, Number(match[1]) || 0);
+  }
+  return null;
+}
+
 async function fetchAllowedReferencePage(initialUrl: URL, allowedDomains: string[]) {
   let current = initialUrl;
   for (let redirectCount = 0; redirectCount <= 3; redirectCount += 1) {
@@ -309,6 +324,8 @@ export async function publicReferenceMetadata(url: string) {
         title: String(data.title || "").trim(),
         author: String(data.author_name || "").trim(),
         thumbnailUrl: String(data.thumbnail_url || "").trim(),
+        durationSeconds: null,
+        engagement: { likes: null, comments: null, saves: null },
       };
     }
     const allowedDomains = ["douyin.com", "xiaohongshu.com", "xhslink.com", "coupang.com", "temu.com", "temu.to"];
@@ -322,6 +339,13 @@ export async function publicReferenceMetadata(url: string) {
       || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]
       || "";
     const thumbnailCandidate = decodeMetadataText(html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["'](https:[^"']+)["']/i)?.[1] || "");
+    const durationMeta = html.match(/<meta[^>]+(?:property|name)=["'](?:video:duration|og:video:duration)["'][^>]+content=["']([^"']+)["']/i)?.[1]
+      || html.match(/["']duration["']\s*:\s*["'](PT[^"']+)["']/i)?.[1]
+      || "";
+    const numericDuration = /^\d+(?:\.\d+)?$/.test(durationMeta) ? Number(durationMeta) : null;
+    const durationSeconds = numericDuration && numericDuration > 0 && numericDuration <= 86400
+      ? Math.round(numericDuration)
+      : isoDurationSeconds(durationMeta);
     let thumbnailUrl = "";
     try {
       thumbnailUrl = thumbnailCandidate ? safeUrl(thumbnailCandidate) : "";
@@ -332,6 +356,12 @@ export async function publicReferenceMetadata(url: string) {
       title: decodeMetadataText(title).slice(0, 300),
       author: "",
       thumbnailUrl,
+      durationSeconds,
+      engagement: {
+        likes: firstPublicMetric(html, ["digg_count", "liked_count", "like_count"]),
+        comments: firstPublicMetric(html, ["comment_count", "comments_count"]),
+        saves: firstPublicMetric(html, ["collect_count", "collected_count", "favorite_count"]),
+      },
     };
   } catch {
     return null;

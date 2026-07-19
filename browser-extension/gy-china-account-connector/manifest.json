@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "GY-NEXUS China Shorts Account Connector",
+  "version": "1.0.0",
+  "description": "Uses your existing Edge login locally to return visible Douyin and Xiaohongshu short-form search metadata to GY-NEXUS.",
+  "permissions": ["tabs"],
+  "host_permissions": [
+    "https://www.douyin.com/*",
+    "https://www.xiaohongshu.com/*",
+    "https://gy-nexus-zfpq.vercel.app/*",
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://gy-nexus-zfpq.vercel.app/*", "http://localhost:3000/*"],
+      "js": ["gy-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.douyin.com/*", "https://www.xiaohongshu.com/*"],
+      "js": ["platform-scraper.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

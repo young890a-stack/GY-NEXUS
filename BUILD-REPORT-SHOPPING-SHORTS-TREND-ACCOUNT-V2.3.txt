@@ -1,0 +1,38 @@
+GY-NEXUS SHOPPING SHORTS TREND AND ACCOUNT CONNECTOR V2.3
+Build date: 2026-07-19
+
+VALIDATION
+- TypeScript: PASS
+- ESLint: PASS, 0 errors and 7 pre-existing warnings
+- Next.js production build: PASS
+- China search API route: PASS
+- Edge extension JavaScript syntax: PASS
+- Edge extension manifest JSON: PASS
+- FFmpeg worker syntax: PASS
+- Live logged-in platform DOM: requires first-run verification in the owner's Edge profile
+
+SEARCH FLOW
+- Korean product query to Simplified Chinese product name
+- 5-8 product/problem/use-case/review/viral keyword suggestions
+- Keyword chips for one-click Chinese re-search
+- Douyin and Xiaohongshu short-form cards in a 9:16 grid
+- Known videos longer than 60 seconds removed
+- Public likes, native search rank, and repeated hashtags used as honest popularity signals
+- Multi-select cards into the existing AI source mix
+
+ACCOUNT CONNECTOR
+- Microsoft Edge Manifest V3 extension
+- Uses the existing local logged-in platform session
+- Search is initiated from GY-NEXUS
+- Reads visible public card metadata only
+- No cookies permission
+- No password or cookie transmission
+- No private API calls
+- No protected video URL extraction or download
+- Login challenge opens the affected platform tab for manual confirmation
+
+LIMITS
+- Native platform DOM changes may require selector maintenance
+- Native search order is personalized and is not a global popularity chart
+- Unknown-duration cards are marked as candidates, never falsely certified as under 60 seconds
+- Original video use still requires ownership or permission
