@@ -10,6 +10,21 @@ export type ImageRequest = {
   transparent?: boolean;
 };
 
+export type ReferenceImageCandidateRequest = {
+  title: string;
+  prompt: string;
+  referenceImageUrls: string[];
+  count?: 1 | 2 | 3;
+  quality?: "low" | "medium" | "high";
+  size?: string;
+};
+
+export type GeneratedImageCandidate = {
+  index: number;
+  assetUrl: string;
+  storagePath: string;
+};
+
 export type VideoRequest = {
   title: string;
   prompt: string;

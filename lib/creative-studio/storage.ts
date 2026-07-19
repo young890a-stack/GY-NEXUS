@@ -20,14 +20,14 @@ export function safeStorageSegment(value: string, fallback = "asset") {
 }
 
 export function buildStoragePath(params: {
-  folder: "images" | "videos";
+  folder: "images" | "videos" | "references";
   title: string;
-  extension: "png" | "mp4";
+  extension: "png" | "jpg" | "webp" | "mp4" | "mp3";
 }) {
   const date = new Date().toISOString().slice(0, 10);
   const name = safeStorageSegment(
     params.title,
-    params.folder === "images" ? "gy-nexus-image" : "gy-nexus-video",
+    params.folder === "videos" ? "gy-nexus-video" : "gy-nexus-image",
   );
 
   return `${params.folder}/${date}/${Date.now()}-${name}.${params.extension}`;

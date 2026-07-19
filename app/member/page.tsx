@@ -10,6 +10,8 @@ export default async function MemberPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/member");
   const name = String(user.user_metadata?.display_name || user.email?.split("@")[0] || "회원");
+  // Server-rendered analytics intentionally uses the request-time clock.
+  // eslint-disable-next-line react-hooks/purity
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const [bookmarks, views, notifications, profile] = await Promise.all([
     supabase.from("content_bookmarks").select("id", { count: "exact", head: true }).eq("user_id", user.id),

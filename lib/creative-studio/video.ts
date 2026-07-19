@@ -10,11 +10,11 @@ function normalizeSourceImageUrl(value?: string) {
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error("첫 장면 이미지 URL 형식이 올바르지 않습니다.");
+    throw new Error("장면 이미지 URL 형식이 올바르지 않습니다.");
   }
 
   if (parsed.protocol !== "https:") {
-    throw new Error("첫 장면 이미지는 외부에서 접근 가능한 HTTPS URL이어야 합니다.");
+    throw new Error("장면 이미지는 외부에서 접근 가능한 HTTPS URL이어야 합니다.");
   }
 
   return parsed.toString();

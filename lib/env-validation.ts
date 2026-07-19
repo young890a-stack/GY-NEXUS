@@ -16,6 +16,8 @@ export function getEnvironmentStatus(): EnvItem[] {
     { key: "OWNER_EMAIL", label: "Owner Email", group: "core", required: true, configured: exists("OWNER_EMAIL") },
     { key: "SUPABASE_SERVICE_ROLE_KEY", label: "Supabase Service Role", group: "core", required: true, configured: existsAny("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEY") },
     { key: "OPENAI_API_KEY", label: "OpenAI API", group: "ai", required: false, configured: exists("OPENAI_API_KEY") },
+    { key: "OPENAI_IMAGE_MODEL", label: "GPT Image", group: "creative", required: false, configured: exists("OPENAI_IMAGE_MODEL") },
+    { key: "OPENAI_QUALITY_MODEL", label: "쇼츠 품질검수 AI", group: "creative", required: false, configured: exists("OPENAI_QUALITY_MODEL") },
     { key: "GEMINI_API_KEY", label: "Gemini 독립 검토", group: "ai", required: false, configured: existsAny("GEMINI_API_KEY", "GOOGLE_AI_API_KEY") },
     { key: "YOUTUBE_CLIENT_ID", label: "YouTube OAuth Client", group: "publish", required: false, configured: exists("YOUTUBE_CLIENT_ID") },
     { key: "YOUTUBE_CLIENT_SECRET", label: "YouTube OAuth Secret", group: "publish", required: false, configured: exists("YOUTUBE_CLIENT_SECRET") },
