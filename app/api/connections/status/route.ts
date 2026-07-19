@@ -8,6 +8,8 @@ import {
 } from "@/lib/connections/secure-cookie";
 import type { ConnectionState, OAuthToken } from "@/lib/connections/types";
 import { getSearchConsoleAccessToken, listSearchConsoleSites } from "@/lib/search-console/client";
+import { verifyAffiliateProof } from "@/lib/affiliate/verification-proof";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type StateResult = { state: ConnectionState; refreshedToken?: OAuthToken };
 
@@ -196,11 +198,27 @@ export async function GET(request: NextRequest) {
   const coupangConfigured = Boolean(
     process.env.COUPANG_ACCESS_KEY?.trim() && process.env.COUPANG_SECRET_KEY?.trim(),
   );
-  const coupangVerified = request.cookies.get("gy_coupang_verified")?.value === "1";
-  const temuConfigured = Boolean(
-    process.env.TEMU_AFFILIATE_ID?.trim() || process.env.TEMU_AFFILIATE_LINK_TEMPLATE?.trim(),
+  const coupangCredential = `${process.env.COUPANG_ACCESS_KEY?.trim() || ""}:${process.env.COUPANG_SECRET_KEY?.trim() || ""}`;
+  const coupangVerified = coupangConfigured && verifyAffiliateProof(
+    request.cookies.get("gy_coupang_verified")?.value,
+    "coupang",
+    coupangCredential,
   );
-  const temuVerified = request.cookies.get("gy_temu_verified")?.value === "1";
+  let temuStoredCount = 0;
+  try {
+    const supabase = createAdminClient();
+    const [candidates, products] = await Promise.all([
+      supabase.from("trend_products").select("id", { count: "exact", head: true }).eq("platform", "temu"),
+      supabase.from("products").select("id", { count: "exact", head: true }).eq("platform", "temu"),
+    ]);
+    temuStoredCount = (candidates.count || 0) + (products.count || 0);
+  } catch {
+    temuStoredCount = 0;
+  }
+  const temuConfigured = Boolean(process.env.TEMU_AFFILIATE_ID?.trim() || temuStoredCount > 0);
+  const temuCredential = process.env.TEMU_AFFILIATE_ID?.trim() || "stored-temu-share-links";
+  const temuProof = verifyAffiliateProof(request.cookies.get("gy_temu_verified")?.value, "temu", temuCredential);
+  const temuOperational = temuStoredCount > 0;
 
   const states: ConnectionState[] = [
     youtube.state,
@@ -212,15 +230,22 @@ export async function GET(request: NextRequest) {
       name: "Coupang Partners",
       configured: coupangConfigured,
       connected: coupangConfigured && coupangVerified,
-      detail: !coupangConfigured ? "Coupang Access Key와 Secret Key가 필요합니다." : coupangVerified ? "파트너스 API 서명 인증과 상품 조회 테스트가 통과했습니다." : "키가 등록됐습니다. 연결 테스트를 한 번 실행하세요.",
+      operational: coupangConfigured && coupangVerified,
+      mode: "api",
+      detail: !coupangConfigured ? "Coupang Access Key와 Secret Key가 필요합니다." : coupangVerified ? "파트너스 API 서명·상품 조회·제휴 링크 응답을 최근 24시간 안에 확인했습니다." : "키가 등록됐습니다. 실제 API 연결 테스트를 실행하세요.",
+      limitation: "API 권한이 승인된 계정에서만 골드박스·카테고리 베스트·키워드 검색을 자동 수집합니다.",
     },
     {
       id: "temu",
       name: "Temu Affiliate",
       configured: temuConfigured,
-      connected: temuConfigured && temuVerified,
-      detail: !temuConfigured ? "Temu Affiliate ID 또는 제휴 링크 설정이 필요합니다." : temuVerified ? "제휴 링크 템플릿 검증을 통과했습니다." : "제휴 정보가 등록됐습니다. 링크 검증을 실행하세요.",
-      limitation: "공개 제휴 API가 없는 계정은 상품별 제휴 링크 저장 방식으로 운영합니다.",
+      connected: false,
+      operational: temuOperational,
+      mode: "share-link",
+      detail: temuOperational
+        ? `Temu 공유 링크 기반 후보·정식 상품 ${temuStoredCount}개가 저장되어 있습니다.${temuProof ? " 최근 운영 검증도 통과했습니다." : " 운영 확인 버튼으로 다시 검사할 수 있습니다."}`
+        : "Temu 제휴 대시보드의 인기상품·상품검색에서 ‘공유’로 만든 링크를 등록해주세요.",
+      limitation: "Seller API나 가짜 링크 템플릿을 요구하지 않습니다. 공개 제휴 API가 없는 계정은 실제 공유 링크를 검증·저장하는 방식으로 운영합니다.",
     },
   ];
 

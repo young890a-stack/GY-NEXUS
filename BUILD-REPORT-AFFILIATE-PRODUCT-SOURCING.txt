@@ -1,0 +1,37 @@
+GY-NEXUS · AFFILIATE PRODUCT SOURCING V1
+Build date: 2026-07-19
+
+[AUDIT FINDINGS]
+1. Previous Coupang test route used an incomplete Partners path without /v1.
+2. Previous Coupang state used a plain 180-day cookie and could remain green after credentials changed.
+3. Previous Temu test only checked whether a fabricated URL template parsed as a URL.
+4. Previous product collector required pasted JSON and did not fetch Coupang popular products.
+5. Previous deduplication only compared source name + URL, allowing the same provider product through different links.
+6. Previous Product Intelligence status constraint did not include the UI's held state.
+
+[IMPLEMENTED]
+- Real Coupang Partners HMAC client with the /openapi/v1 API path.
+- Goldbox, category best, and keyword search discovery routes.
+- API response normalization, retries for transient failures, bounded timeouts, and sanitized Korean errors.
+- Encrypted 24-hour verification proofs bound to the current Coupang credentials.
+- Temu Affiliate share-link operating mode without pretending that Seller API is an Affiliate API.
+- Up to 10 Temu share links per run, metadata extraction with manual fallback, per-item rejection reasons.
+- Strict Coupang/Temu domain checks and tracking-evidence classification.
+- Product-ID deduplication while preserving already approved candidates.
+- Source, link status, last-seen time, data-quality score, run success/partial/failure audit data.
+- Connection Center states separated into API connected and share-link operational.
+- New beginner-facing sourcing workbench inside /admin/product-intelligence.
+- Dedicated Supabase migration and Korean operating guide.
+
+[VERIFICATION]
+- npm run typecheck: PASS (0 errors)
+- npm run lint: PASS (0 errors; 7 pre-existing warnings outside this feature)
+- npm run build: PASS (Next.js 16.2.10, 75/75 pages)
+- Affiliate link validation cases: PASS (4/4)
+- New runtime routes generated:
+  /api/affiliate/coupang/discover
+  /api/affiliate/temu/import
+  /api/affiliate/overview
+
+[LIVE ACCOUNT TEST BOUNDARY]
+No Coupang or Temu secret credentials are included in the replacement package. A real-account response can only be tested after the SQL migration is applied and the owner's Vercel environment is used. The UI now reports this boundary honestly and does not mark a provider connected from configuration strings alone.

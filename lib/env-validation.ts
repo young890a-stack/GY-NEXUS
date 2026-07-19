@@ -25,7 +25,7 @@ export function getEnvironmentStatus(): EnvItem[] {
     { key: "RUNWAYML_API_SECRET", label: "Runway Video", group: "creative", required: false, configured: exists("RUNWAYML_API_SECRET") },
     { key: "CREATIVE_STORAGE_BUCKET", label: "Creative Storage", group: "creative", required: false, configured: exists("CREATIVE_STORAGE_BUCKET") },
     { key: "COUPANG_ACCESS_KEY", label: "Coupang Partners", group: "optional", required: false, configured: exists("COUPANG_ACCESS_KEY") },
-    { key: "TEMU_APP_KEY", label: "Temu Affiliate", group: "optional", required: false, configured: exists("TEMU_APP_KEY") },
+    { key: "TEMU_AFFILIATE_ID", label: "Temu Affiliate (선택)", group: "optional", required: false, configured: exists("TEMU_AFFILIATE_ID") },
   ];
 }
 

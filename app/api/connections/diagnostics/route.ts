@@ -34,11 +34,8 @@ export async function GET(request: NextRequest) {
         source: "Coupang Partners",
       },
       temu: {
-        ready: Boolean(
-          process.env.TEMU_AFFILIATE_ID?.trim() ||
-            process.env.TEMU_AFFILIATE_LINK_TEMPLATE?.trim(),
-        ),
-        source: "Temu Affiliate",
+        ready: Boolean(process.env.TEMU_AFFILIATE_ID?.trim()),
+        source: "Temu Affiliate 공유 링크 운영",
       },
     },
     checks: [

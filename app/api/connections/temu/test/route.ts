@@ -1,55 +1,46 @@
 import { NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createAffiliateProof } from "@/lib/affiliate/verification-proof";
+import { CONNECTION_COOKIE_OPTIONS } from "@/lib/connections/secure-cookie";
 
 export async function POST() {
-  const affiliateId = process.env.TEMU_AFFILIATE_ID?.trim();
-  const template = process.env.TEMU_AFFILIATE_LINK_TEMPLATE?.trim();
-
-  if (!affiliateId || !template) {
-    return NextResponse.json(
-      {
-        success: false,
-        message: "TEMU_AFFILIATE_ID와 TEMU_AFFILIATE_LINK_TEMPLATE을 등록하세요.",
-      },
-      { status: 400 },
-    );
-  }
-
-  if (!template.includes("{url}") && !template.includes("{product_url}")) {
-    return NextResponse.json(
-      {
-        success: false,
-        message: "링크 템플릿에는 {url} 또는 {product_url} 자리표시자가 있어야 합니다.",
-      },
-      { status: 400 },
-    );
-  }
-
-  const sampleUrl = "https://www.temu.com/";
-  const generated = template
-    .replaceAll("{affiliate_id}", encodeURIComponent(affiliateId))
-    .replaceAll("{url}", encodeURIComponent(sampleUrl))
-    .replaceAll("{product_url}", encodeURIComponent(sampleUrl));
-
   try {
-    const parsed = new URL(generated);
-    const success = NextResponse.json({
+    const supabase = createAdminClient();
+    const [{ count: candidateCount, error: candidateError }, { count: productCount, error: productError }] = await Promise.all([
+      supabase.from("trend_products").select("id", { count: "exact", head: true }).eq("platform", "temu"),
+      supabase.from("products").select("id", { count: "exact", head: true }).eq("platform", "temu"),
+    ]);
+    if (candidateError) throw candidateError;
+    if (productError) throw productError;
+    const storedCount = (candidateCount || 0) + (productCount || 0);
+    if (!storedCount) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Temu는 공개 제휴 API 연결이 아니라 공유 링크 방식입니다. 상품 소싱센터에서 Temu 공유 링크를 1개 이상 등록해주세요.",
+          mode: "share-link",
+        },
+        { status: 400 },
+      );
+    }
+
+    const credential = process.env.TEMU_AFFILIATE_ID?.trim() || "stored-temu-share-links";
+    const response = NextResponse.json({
       success: true,
-      message: "Temu 제휴 링크 템플릿 검증이 완료되었습니다.",
-      sampleUrl: parsed.toString(),
-      mode: "affiliate-link",
+      message: `Temu 공유 링크 운영 준비가 완료되었습니다. 저장된 후보·정식 상품 ${storedCount}개를 확인했습니다.`,
+      mode: "share-link",
+      storedCount,
     });
-    success.cookies.set("gy_temu_verified", "1", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 180,
-    });
-    return success;
-  } catch {
+    response.cookies.set(
+      "gy_temu_verified",
+      createAffiliateProof("temu", credential, "share-link"),
+      { ...CONNECTION_COOKIE_OPTIONS, maxAge: 60 * 60 * 24 },
+    );
+    return response;
+  } catch (error) {
     return NextResponse.json(
-      { success: false, message: "생성된 Temu 링크 형식이 올바르지 않습니다." },
-      { status: 400 },
+      { success: false, message: error instanceof Error ? error.message : "Temu 링크 운영 상태 확인에 실패했습니다." },
+      { status: 500 },
     );
   }
 }

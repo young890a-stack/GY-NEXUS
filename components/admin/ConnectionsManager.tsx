@@ -12,6 +12,8 @@ type Connection = {
   detail: string;
   account?: string;
   limitation?: string;
+  operational?: boolean;
+  mode?: "oauth" | "api" | "share-link";
 };
 type StatusResponse = {
   success: boolean;
@@ -56,14 +58,14 @@ const metadata: Record<
   },
   coupang: {
     icon: "🛒",
-    purpose: "파트너스 상품 조회 · 제휴 링크",
-    env: ["COUPANG_ACCESS_KEY", "COUPANG_SECRET_KEY"],
+    purpose: "인기상품 실제 수집 · 제휴 링크",
+    env: ["COUPANG_ACCESS_KEY", "COUPANG_SECRET_KEY", "COUPANG_SUB_ID(선택)"],
     test: "/api/connections/coupang/test",
   },
   temu: {
     icon: "🟠",
-    purpose: "상품별 제휴 링크 운영",
-    env: ["TEMU_AFFILIATE_ID", "TEMU_AFFILIATE_LINK_TEMPLATE"],
+    purpose: "인기상품 공유 링크 검증 · 저장",
+    env: ["TEMU_AFFILIATE_ID(선택)"],
     test: "/api/connections/temu/test",
   },
 };
@@ -97,7 +99,7 @@ export default function ConnectionsManager() {
 
   const connectedCount = useMemo(
     () =>
-      connections.filter((item) => item.connected).length +
+      connections.filter((item) => item.connected || item.operational).length +
       Number(core.openai) +
       Number(core.supabase),
     [connections, core],
@@ -253,7 +255,7 @@ export default function ConnectionsManager() {
               <article className="connection-card" key={connection.id}>
                 <div className="connection-card-top">
                   <div className="connection-title-wrap"><span className="connection-icon">{meta.icon}</span><div><p>{meta.purpose}</p><h2>{connection.name}</h2></div></div>
-                  <span className={`connection-badge ${connection.connected ? "connected" : connection.configured ? "ready" : "missing"}`}>{connection.connected ? "연결 완료" : connection.configured ? "승인·검증 필요" : "설정 필요"}</span>
+                  <span className={`connection-badge ${connection.connected || connection.operational ? "connected" : connection.configured ? "ready" : "missing"}`}>{connection.connected ? "연결 완료" : connection.operational ? "링크 운영 준비" : connection.configured ? "승인·검증 필요" : "설정 필요"}</span>
                 </div>
                 {connection.account && <div className="connection-account">연결 대상: <strong>{connection.account}</strong></div>}
                 <p className="connection-detail">{connection.detail}</p>
@@ -270,9 +272,9 @@ export default function ConnectionsManager() {
                       <a className={!connection.configured ? "disabled" : ""} href={connection.configured ? meta.start : undefined}>계정 연결</a>
                     )
                   ) : (
-                    <button disabled={!connection.configured || actionId === connection.id} onClick={() => void runTest(connection)}>{connection.connected ? "다시 테스트" : "연결 테스트"}</button>
+                    <button disabled={!connection.configured || actionId === connection.id} onClick={() => void runTest(connection)}>{connection.id === "temu" ? "링크 운영 확인" : connection.connected ? "다시 테스트" : "연결 테스트"}</button>
                   )}
-                  {connection.id === "temu" && <a className="secondary-action" href="/admin/products/new">상품별 링크 등록</a>}
+                  {(connection.id === "temu" || connection.id === "coupang") && <a className="secondary-action" href={`/admin/product-intelligence?provider=${connection.id}`}>{connection.id === "coupang" ? "인기상품 수집" : "공유 링크 등록"}</a>}
                 </div>
               </article>
             );

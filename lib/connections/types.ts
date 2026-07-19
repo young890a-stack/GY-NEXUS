@@ -23,4 +23,6 @@ export type ConnectionState = {
   detail: string;
   account?: string;
   limitation?: string;
+  operational?: boolean;
+  mode?: "oauth" | "api" | "share-link";
 };

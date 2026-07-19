@@ -8,6 +8,8 @@ type Item = {
   id: string; title: string; platform: string; ai_score: number; opportunity_grade?: string;
   opportunity_recommendation?: string; status: Status; price_text?: string; affiliate_url: string;
   ai_summary?: string; shorts_hook?: string; caution?: string; collected_at?: string;
+  link_status?: "verified" | "provider-link" | "unconfirmed" | "invalid";
+  data_quality_score?: number; provider_mode?: string; last_seen_at?: string;
 };
 
 const sample = JSON.stringify([{ title: "USB-C 8포트 멀티허브", platform: "coupang", affiliate_url: "https://example.com/affiliate-link", price_text: "39,900원", category: "노트북 액세서리", keyword: "USB-C 허브", description: "HDMI, USB 3.0, PD 충전을 지원하는 휴대용 멀티허브", demand: 84, seasonality: 65, priceAppeal: 77, visualDemo: 91, audienceFit: 90, commissionPotential: 70, competition: 63, policyRisk: 10, dataConfidence: 82 }], null, 2);
@@ -25,6 +27,7 @@ export default function ProductIntelligenceControlCenter({ items }: { items: Ite
     avg: items.length ? Math.round(items.reduce((sum, item) => sum + Number(item.ai_score || 0), 0) / items.length) : 0,
     waiting: items.filter((item) => item.status === "analyzed").length,
     approved: items.filter((item) => item.status === "approved").length,
+    verified: items.filter((item) => item.link_status === "verified").length,
   }), [items]);
   const visible = filter === "all" ? items : items.filter((item) => item.status === filter);
 
@@ -71,7 +74,7 @@ export default function ProductIntelligenceControlCenter({ items }: { items: Ite
         <div className="stat"><small>후보 상품</small><strong>{stats.total}</strong></div><div className="stat"><small>최고 점수</small><strong>{stats.top}</strong></div>
         <div className="stat"><small>평균 점수</small><strong>{stats.avg}</strong></div><div className="stat"><small>승인 대기</small><strong>{stats.waiting}</strong></div>
       </div>
-      <div className="help" style={{ marginTop: 12 }}>정식 등록 상품: {stats.approved}개</div>
+      <div className="help" style={{ marginTop: 12 }}>정식 등록 상품: {stats.approved}개 · 추적 근거 확인 링크: {stats.verified}개</div>
     </section>
 
     <section className="panel" style={{ marginBottom: 24 }}>
@@ -85,7 +88,7 @@ export default function ProductIntelligenceControlCenter({ items }: { items: Ite
     <section className="panel" style={{ marginBottom: 24 }}><div className="actions">{(["all", "analyzed", "approved", "held", "rejected"] as const).map((status) => <button key={status} className={filter === status ? "button button-primary" : "button button-light"} onClick={() => setFilter(status)}>{status === "all" ? "전체" : status === "analyzed" ? "승인 대기" : status === "approved" ? "승인" : status === "held" ? "보류" : "제외"}</button>)}</div></section>
 
     <section className="grid">{visible.length === 0 ? <div className="panel empty">해당 상태의 상품이 없습니다.</div> : visible.map((item, index) => <article className="panel" key={item.id}>
-      <div className="badges"><span className="badge">#{index + 1}</span><span className="badge">{item.platform}</span><span className="badge">{item.status}</span><span className="badge">{item.opportunity_grade || "-"}등급</span></div>
+      <div className="badges"><span className="badge">#{index + 1}</span><span className="badge">{item.platform}</span><span className="badge">{item.status}</span><span className="badge">{item.opportunity_grade || "-"}등급</span><span className="badge">링크 {item.link_status === "verified" ? "근거 확인" : item.link_status === "provider-link" ? "쇼핑몰 확인" : "미확인"}</span><span className="badge">데이터 {item.data_quality_score ?? 0}%</span></div>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 20, alignItems: "flex-start" }}><div><h2>{item.title}</h2><p>{item.ai_summary || "분석 내용 없음"}</p><small>{item.price_text || "가격 미입력"}</small></div><div className="analysis-score"><small>기회점수</small><strong>{item.ai_score || 0}</strong><span>/100</span></div></div>
       <div className="analysis-highlight-grid"><div><small>추천</small><strong>{item.opportunity_recommendation || "검토"}</strong></div><div><small>쇼츠 훅</small><strong>{item.shorts_hook || "-"}</strong></div></div>
       <p className="help">{item.caution || "현재 입력 기준 주요 위험 없음"}</p>
