@@ -10,8 +10,7 @@
     "check": "npm run validate:env && npm run typecheck && npm run lint && npm run build",
     "typecheck": "tsc --noEmit",
     "validate:env": "node scripts/validate-env.mjs",
-    "release:check": "node scripts/release-check.mjs",
-    "vercel:setup": "node scripts/setup-vercel-env.mjs"
+    "release:check": "node scripts/release-check.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.12.0",

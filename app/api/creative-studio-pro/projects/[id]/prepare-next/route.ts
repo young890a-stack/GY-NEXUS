@@ -4,7 +4,12 @@ import {
   finalizeReferenceImage,
   generateReferenceImageCandidates,
 } from "@/lib/creative-studio/image";
-import { reviewSceneImageCandidates } from "@/lib/creative-studio-pro/quality";
+import {
+  analyzeProductVisualProfile,
+  formatProductVisualLock,
+  reviewSceneImageCandidates,
+} from "@/lib/creative-studio-pro/quality";
+import type { ProductVisualProfile } from "@/lib/creative-studio-pro/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -15,6 +20,20 @@ function referenceUrls(project: Record<string, unknown>) {
     : [];
   const fallback = typeof project.source_image_url === "string" ? [project.source_image_url] : [];
   return Array.from(new Set([...stored, ...fallback].map((value) => value.trim()).filter(Boolean))).slice(0, 4);
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function isProductVisualProfile(value: unknown): value is ProductVisualProfile {
+  const item = objectValue(value);
+  return typeof item.identitySummary === "string" &&
+    typeof item.silhouette === "string" &&
+    Array.isArray(item.forbiddenChanges) &&
+    Number.isFinite(Number(item.referenceCoverageScore));
 }
 
 export async function POST(_: Request, context: { params: Promise<{ id: string }> }) {
@@ -58,10 +77,46 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
 
     sceneId = scene.id;
     const references = referenceUrls(project as Record<string, unknown>);
-    if (!references.length) throw new Error("상품 참조 이미지가 없습니다.");
+    if (references.length < 2) {
+      throw new Error("유료 품질 기준을 위해 앞·뒤 또는 서로 다른 각도의 실제 상품 사진을 최소 2장 올려주세요.");
+    }
     const threshold = Math.max(80, Math.min(95, Number(project.quality_threshold) || 85));
     const maxRetries = Math.max(1, Math.min(2, Number(project.max_image_retries) || 2));
     const attempt = Math.max(0, Number(scene.image_retry_count) || 0) + 1;
+
+    const settings = objectValue(project.settings);
+    let visualProfile = settings.visualProfile;
+    if (!isProductVisualProfile(visualProfile)) {
+      const analysis = await analyzeProductVisualProfile({
+        productName: project.product_name,
+        productDescription: project.product_description,
+        referenceImageUrls: references,
+      });
+      visualProfile = analysis.profile;
+      await supabase.from("video_projects").update({
+        settings: { ...settings, visualProfile: analysis.profile, visualProfileModel: analysis.model },
+        updated_at: new Date().toISOString(),
+      }).eq("id", id);
+    }
+    if (!isProductVisualProfile(visualProfile)) throw new Error("상품 시각 정체성을 확정하지 못했습니다.");
+    if (visualProfile.referenceCoverageScore < 72) {
+      const gaps = visualProfile.referenceGaps.join(" · ") || "상품의 앞·뒤·측면 세부 구조가 부족합니다.";
+      throw new Error(`상품 사진 사실자료가 부족합니다(${visualProfile.referenceCoverageScore}점). ${gaps}`);
+    }
+
+    const { data: previousScene, error: previousSceneError } = await supabase
+      .from("video_scenes")
+      .select("selected_image_url")
+      .eq("project_id", id)
+      .eq("quality_status", "approved")
+      .lt("scene_number", scene.scene_number)
+      .order("scene_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (previousSceneError) throw previousSceneError;
+    const continuityImageUrls = typeof previousScene?.selected_image_url === "string"
+      ? [previousScene.selected_image_url]
+      : [];
 
     await supabase.from("video_projects").update({ status: "image_quality", updated_at: new Date().toISOString() }).eq("id", id);
     await supabase.from("video_scenes").update({
@@ -72,18 +127,25 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
 
     const scenePrompt = [
       scene.prompt,
+      formatProductVisualLock(visualProfile),
       "제공된 상품 참조 이미지의 동일한 제품을 사용한다.",
       "상품의 색상, 외형, 버튼, 포트, 구성품, 재질과 비율을 임의로 바꾸지 않는다.",
       "세로형 9:16 쇼핑 쇼츠의 한 장면이며 한 장면에는 하나의 행동만 보여준다.",
       "이미지 안에 상품명, 가격, 자막, 로고, 인증마크 또는 읽을 수 있는 글자를 새로 만들지 않는다.",
       "과장된 크기, 비현실적인 효과, 과도한 광택을 피하고 실제 촬영처럼 자연스럽게 만든다.",
+      continuityImageUrls.length
+        ? "직전 승인 장면과 동일한 상품, 인물, 조명과 색감을 유지해 자연스럽게 이어지게 한다."
+        : "첫 장면에서 확정한 상품과 광고의 시각 기준을 이후 장면에서도 유지할 수 있게 명확하게 표현한다.",
+      "Runway에서 제품이 녹거나 변형되지 않도록 한 번에 하나의 단순한 동작과 안정된 제품 경계를 만든다.",
+      "세로 화면 위아래 12%에는 중요한 상품 요소를 두지 않는다.",
     ].join(" ");
     const draft = await generateReferenceImageCandidates({
       title: `${project.title}-scene-${scene.scene_number}-attempt-${attempt}`,
       prompt: scenePrompt,
       referenceImageUrls: references,
+      continuityImageUrls,
       count: 3,
-      quality: "low",
+      quality: "medium",
       size: "1024x1824",
     });
 
@@ -92,7 +154,9 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
       productName: project.product_name,
       productDescription: project.product_description,
       scenePrompt,
+      visualProfile,
       referenceImageUrls: references,
+      continuityImageUrls,
       candidates: draft.candidates,
       threshold,
     });
@@ -127,13 +191,16 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
       title: `${project.title}-scene-${scene.scene_number}`,
       prompt: scenePrompt,
       referenceImageUrls: references,
+      continuityImageUrls,
       draftImageUrl: draftReview.best.assetUrl,
     });
     const finalReview = await reviewSceneImageCandidates({
       productName: project.product_name,
       productDescription: project.product_description,
       scenePrompt,
+      visualProfile,
       referenceImageUrls: references,
+      continuityImageUrls,
       candidates: [finalImage.image],
       threshold,
     });

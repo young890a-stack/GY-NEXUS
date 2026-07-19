@@ -39,6 +39,21 @@ export type SceneImageCandidate = {
   issues?: string[];
 };
 
+export type ProductVisualProfile = {
+  identitySummary: string;
+  category: string;
+  dominantColors: string[];
+  materials: string[];
+  silhouette: string;
+  distinctiveFeatures: string[];
+  controlsAndPorts: string[];
+  visibleBranding: string[];
+  includedAccessories: string[];
+  forbiddenChanges: string[];
+  referenceCoverageScore: number;
+  referenceGaps: string[];
+};
+
 export type SceneQualityReport = {
   provider: "openai";
   model: string;
@@ -50,10 +65,17 @@ export type SceneQualityReport = {
   metrics: {
     productMatch: number;
     visualIntegrity: number;
+    geometryDetail: number;
+    colorMaterial: number;
+    textLogoIntegrity: number;
+    humanAnatomy: number;
+    sceneContinuity: number;
+    motionReadiness: number;
     commercialNaturalness: number;
     composition: number;
     claimSafety: number;
   };
+  criticalErrors: string[];
 };
 
 export type PlannedScene = {

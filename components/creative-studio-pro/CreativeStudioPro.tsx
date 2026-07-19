@@ -13,12 +13,26 @@ type Project = {
   render_approved?: boolean;
   quality_threshold?: number;
   final_video_url?: string | null;
+  settings?: {
+    visualProfile?: {
+      identitySummary?: string;
+      referenceCoverageScore?: number;
+      referenceGaps?: string[];
+      forbiddenChanges?: string[];
+    };
+  } | null;
   created_at: string;
 };
 
 type QualityMetrics = {
   productMatch: number;
   visualIntegrity: number;
+  geometryDetail?: number;
+  colorMaterial?: number;
+  textLogoIntegrity?: number;
+  humanAnatomy?: number;
+  sceneContinuity?: number;
+  motionReadiness?: number;
   commercialNaturalness: number;
   composition: number;
   claimSafety: number;
@@ -30,6 +44,7 @@ type QualityReport = {
   summary?: string;
   issues?: string[];
   metrics?: QualityMetrics;
+  criticalErrors?: string[];
 };
 
 type ImageCandidate = {
@@ -112,6 +127,7 @@ export default function CreativeStudioPro() {
   const completed = scenes.filter((scene) => scene.status === "completed").length;
   const imageProgress = scenes.length ? Math.round((imageApproved / scenes.length) * 100) : 0;
   const videoProgress = scenes.length ? Math.round((completed / scenes.length) * 100) : 0;
+  const visualProfile = selected?.settings?.visualProfile;
 
   async function loadProjects() {
     const response = await fetch("/api/creative-studio-pro/projects", { cache: "no-store" });
@@ -160,8 +176,9 @@ export default function CreativeStudioPro() {
   }
 
   async function createProject() {
-    if (!referenceFiles.length && !form.sourceImageUrl.trim()) {
-      setError("실제 상품 사진을 최소 1장 올려주세요. 앞·뒤 또는 사용 장면을 포함한 2~4장을 권장합니다.");
+    const referenceCount = referenceFiles.length + (form.sourceImageUrl.trim() ? 1 : 0);
+    if (referenceCount < 2) {
+      setError("유료 품질 기준을 위해 실제 상품 사진을 앞·뒤 또는 서로 다른 각도로 최소 2장 올려주세요.");
       return;
     }
     setBusy("create");
@@ -211,7 +228,7 @@ export default function CreativeStudioPro() {
   async function prepareAll() {
     if (!selected) return;
     const confirmed = window.confirm(
-      `장면마다 저해상도 후보 3개와 통과 시 고품질 최종본을 생성합니다. 최대 ${form.maxImageRetries}회까지 자동 재생성할 수 있습니다. 계속할까요?`,
+      `장면마다 중간 품질 후보 3개를 비교하고 통과 시 4K 고품질 최종본을 생성합니다. 상품 정체성과 장면 연속성을 검사하며 최대 ${form.maxImageRetries}회까지 자동 재생성할 수 있습니다. 계속할까요?`,
     );
     if (!confirmed) return;
     setBusy("images");
@@ -308,8 +325,8 @@ export default function CreativeStudioPro() {
       <section className="panel creative-pro-hero">
         <div>
           <div className="eyebrow">GY PREMIUM SHORTS · QUALITY GATE</div>
-          <h1>상품을 닮은 이미지부터 검수하는 쇼츠 제작센터</h1>
-          <p>GPT Image 2가 장면별 후보를 만들고 Dream Y가 상품 일치도와 왜곡을 검수합니다. 합격 장면만 대표님 승인 후 Runway로 보냅니다.</p>
+          <h1>상품의 정체성을 잠그고 장면마다 이어지는 쇼츠 제작센터</h1>
+          <p>GPT Image 2가 4K 최종 이미지를 만들고 Dream Y가 형태·색상·재질·로고·손·장면 연속성·영상 안정성을 검사합니다. 치명적 오류가 하나라도 있으면 Runway로 보내지 않습니다.</p>
         </div>
         <div className="creative-pro-badge"><strong>{form.duration}초</strong><span>{form.duration / 5}개 장면</span></div>
       </section>
@@ -378,6 +395,12 @@ export default function CreativeStudioPro() {
           <div><span><b>상품 이미지 품질검수</b><em>{imageProgress}%</em></span><div className="progress-track"><i style={{ width: `${imageProgress}%` }} /></div></div>
           <div><span><b>Runway 영상 제작</b><em>{videoProgress}%</em></span><div className="progress-track video"><i style={{ width: `${videoProgress}%` }} /></div></div>
         </div>
+        {visualProfile && <div className="visual-profile-card">
+          <div><span className="eyebrow">PRODUCT VISUAL DNA</span><b>{visualProfile.identitySummary || selected.product_name}</b></div>
+          <strong>{visualProfile.referenceCoverageScore ?? "-"}점</strong>
+          {Array.isArray(visualProfile.referenceGaps) && visualProfile.referenceGaps.length > 0 && <p>보완 자료: {visualProfile.referenceGaps.join(" · ")}</p>}
+          {Array.isArray(visualProfile.forbiddenChanges) && visualProfile.forbiddenChanges.length > 0 && <p>변경 금지: {visualProfile.forbiddenChanges.join(" · ")}</p>}
+        </div>}
         {qualityHolds > 0 && <p className="quality-hold-note">{qualityHolds}개 장면이 상품 일치도 기준에 미달해 보류되었습니다. Runway 비용은 사용되지 않았습니다.</p>}
 
         <div className="export-bar"><div><b>CapCut 편집 자료</b><span>정확한 자막과 장면 순서를 바로 내려받습니다.</span></div><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=srt`}>SRT 자막</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=guide`}>CapCut 안내서</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export`}>편집 JSON</a></div>
@@ -401,7 +424,8 @@ export default function CreativeStudioPro() {
                   <small>{candidate.score ?? "-"}점</small>
                 </div>
               ))}</div>}
-              {report?.metrics && <div className="quality-metrics"><span>상품 {report.metrics.productMatch}</span><span>왜곡 {report.metrics.visualIntegrity}</span><span>자연스러움 {report.metrics.commercialNaturalness}</span><span>구도 {report.metrics.composition}</span><span>과장검수 {report.metrics.claimSafety}</span></div>}
+              {report?.metrics && <div className="quality-metrics"><span>상품 {report.metrics.productMatch}</span><span>전체 무결성 {report.metrics.visualIntegrity}</span><span>형태·버튼 {report.metrics.geometryDetail ?? "-"}</span><span>색상·재질 {report.metrics.colorMaterial ?? "-"}</span><span>로고·글자 {report.metrics.textLogoIntegrity ?? "-"}</span><span>손·신체 {report.metrics.humanAnatomy ?? "-"}</span><span>장면 연속성 {report.metrics.sceneContinuity ?? "-"}</span><span>영상 안정성 {report.metrics.motionReadiness ?? "-"}</span><span>자연스러움 {report.metrics.commercialNaturalness}</span><span>구도 {report.metrics.composition}</span><span>과장검수 {report.metrics.claimSafety}</span></div>}
+              {Array.isArray(report?.criticalErrors) && report.criticalErrors.length > 0 && <p className="critical-error">치명적 오류: {report.criticalErrors.join(" · ")}</p>}
               {report?.summary && <p className="quality-summary">{report.summary}</p>}
               {Array.isArray(report?.issues) && report.issues.length > 0 && <ul className="quality-issues">{report.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
               <details><summary>장면 프롬프트·내레이션</summary><small>{scene.prompt}</small><small>{scene.narration}</small></details>

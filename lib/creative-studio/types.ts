@@ -14,6 +14,7 @@ export type ReferenceImageCandidateRequest = {
   title: string;
   prompt: string;
   referenceImageUrls: string[];
+  continuityImageUrls?: string[];
   count?: 1 | 2 | 3;
   quality?: "low" | "medium" | "high";
   size?: string;

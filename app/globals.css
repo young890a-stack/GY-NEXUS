@@ -1239,6 +1239,11 @@ body { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; 
 .candidate-strip small { position:absolute;left:5px;bottom:5px;margin:0;padding:3px 5px;border-radius:6px;background:rgba(15,23,42,.8);color:#fff;font-size:8px; }
 .quality-metrics { display:flex;flex-wrap:wrap;gap:5px;margin:10px 0; }
 .quality-metrics span { padding:5px 7px;border-radius:8px;background:#eef2ff;color:#4338ca;font-size:9px;font-weight:850; }
+.visual-profile-card { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 18px;margin:16px 0;padding:16px 18px;border:1px solid #c7d2fe;border-radius:16px;background:linear-gradient(135deg,#eef2ff,#faf5ff); }
+.visual-profile-card>div { display:grid;gap:4px; }
+.visual-profile-card>strong { align-self:center;padding:8px 11px;border-radius:11px;background:#312e81;color:#fff;font-size:14px; }
+.visual-profile-card p { grid-column:1/-1;margin:0;color:#475467;font-size:11px;line-height:1.6; }
+.critical-error { padding:9px 11px;border:1px solid #fda29b;border-radius:10px;background:#fff1f3!important;color:#b42318!important;font-weight:850; }
 .scene-card .quality-summary { color:#344054;font-weight:700;line-height:1.55; }
 .quality-issues { display:grid;gap:4px;margin:8px 0;padding-left:17px;color:#b42318;font-size:10px;line-height:1.45; }
 @media(max-width:1150px){.quality-scene-grid{grid-template-columns:1fr}.quality-actions{max-width:none}}

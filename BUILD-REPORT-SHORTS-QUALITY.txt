@@ -1,32 +1,30 @@
-GY-NEXUS · PREMIUM SHORTS QUALITY PIPELINE
+GY-NEXUS · PREMIUM SHORTS IMAGE QUALITY V4
 
 완료 항목
-- 상품 참조 이미지 1~4장 업로드
-- GPT Image 2 장면별 후보 3개 생성
-- 상품 일치도·왜곡·자연스러움·구도·과장 위험 자동검수
-- 통과 후보 고품질 재생성 및 재검수
+- 실제 상품 사진 2~4장 필수화
+- Product Visual DNA 사전 추출 및 참고자료 충족도 검사
+- GPT Image 2 중간 품질 후보 3개 비교
+- 상품 동일성·형태·색상·재질·로고·글자·손·연속성·영상 안정성 강화검수
+- 치명적 오류 하드 게이트: 평균점수와 관계없이 자동 탈락
+- 직전 승인 장면을 이용한 상품·인물·조명·색감 연속성 유지
+- 2160x3840 4K 세로형 high 최종 이미지 생성 및 2차 검수
+- Runway 제품 변형·과도한 모션 방지 프롬프트
 - 최대 2회 재시도와 품질 보류
 - 전체 품질 통과 전 Runway 유료 생성 차단
-- 대표의 명시적 Runway 비용 승인
-- 모든 장면에 검수된 이미지 적용
-- SRT·CapCut 가이드·편집 JSON 내보내기
-- 관리자 및 비용 API owner-only 보호 확인
-- Vercel Production·Preview 비밀값 비노출 자동 설정 스크립트
+- 대표의 명시적 Runway 비용 승인 유지
+- SRT·CapCut 가이드·편집 JSON 내보내기 유지
+- 새 DB 칼럼과 새 필수 환경변수 없음
 
 검증 결과
 - npm run typecheck: 통과
 - npm run lint: 통과 (기존 경고 9개, 오류 0개)
 - npm run build: Next.js 16.2.10 프로덕션 빌드 통과
+- ZIP 무결성: 통과
 
-배포 전 필수
-1. supabase/SHORTS-QUALITY-PIPELINE-MIGRATION.sql 실행
-2. Vercel OPENAI_IMAGE_MODEL을 gpt-image-2로 변경
-3. OPENAI_QUALITY_MODEL, SHORTS_QUALITY_THRESHOLD, SHORTS_MAX_IMAGE_RETRIES 추가
-4. GitHub main으로 push하여 Vercel 재배포
+배포 전 남은 일
+1. 이전에 실행하지 않았다면 supabase/SHORTS-QUALITY-PIPELINE-MIGRATION.sql 실행
+2. 운영 프로젝트 gy-nexus-zfpq의 기존 쇼츠 환경변수 5개 확인
+3. GitHub main으로 push하여 Vercel 재배포
 
-환경변수 자동 설정
-- npx vercel@latest login
-- npm run vercel:setup
-- 실제 변경 없는 점검: npm run vercel:setup -- --dry-run
-
+Vercel 토큰 또는 npm run vercel:setup은 사용하지 않습니다.
 외부 API 실사용 생성 테스트는 실제 API 키와 비용 승인이 필요한 관계로 실행하지 않았습니다.

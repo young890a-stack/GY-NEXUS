@@ -22,9 +22,18 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
     await supabase.from("video_projects").update({ status: "generating", updated_at: new Date().toISOString() }).eq("id", id);
     await supabase.from("video_scenes").update({ status: "generating", error_message: null, updated_at: new Date().toISOString() }).eq("id", scene.id);
     try {
+      const motionPrompt = [
+        scene.prompt,
+        "제공된 승인 이미지를 첫 프레임이자 상품 정체성 잠금 기준으로 사용한다.",
+        "상품의 실루엣, 색상, 재질, 버튼, 포트, 로고, 구성품과 비율을 영상 끝까지 절대 바꾸지 않는다.",
+        "제품이 녹거나 휘거나 다른 물체로 변형되지 않으며 새로운 글자, 로고, 버튼, 구성품이 생기지 않는다.",
+        "손과 관절은 자연스럽고 손가락 수가 정확하며 제품을 가리지 않는다.",
+        "한 장면에는 하나의 작고 현실적인 동작만 사용하고, 빠른 회전·급격한 줌·과도한 입자·폭발 효과를 사용하지 않는다.",
+        "카메라 움직임은 느리고 안정적이며 실제 프리미엄 상품 촬영처럼 자연스럽다.",
+      ].join(" ");
       const result = await generateCreativeVideo({
         title: `${project.title}-scene-${scene.scene_number}`,
-        prompt: scene.prompt,
+        prompt: motionPrompt,
         sourceImageUrl: scene.selected_image_url,
         duration: 5,
         ratio: project.ratio,

@@ -24,8 +24,11 @@ export async function POST(request: Request) {
       ...(Array.isArray(input.referenceImageUrls) ? input.referenceImageUrls : []),
       input.sourceImageUrl || "",
     ].map((value) => value.trim()).filter(Boolean))).slice(0, 4);
-    if (!referenceImageUrls.length) {
-      return NextResponse.json({ success: false, message: "상품 정확도를 위해 실제 상품 사진을 최소 1장 올려주세요." }, { status: 400 });
+    if (referenceImageUrls.length < 2) {
+      return NextResponse.json({
+        success: false,
+        message: "유료 품질 기준을 위해 실제 상품 사진을 서로 다른 각도로 최소 2장 올려주세요.",
+      }, { status: 400 });
     }
     const qualityThreshold = Math.max(80, Math.min(95, Math.round(Number(input.qualityThreshold) || Number(process.env.SHORTS_QUALITY_THRESHOLD) || 85)));
     const maxImageRetries = Math.max(1, Math.min(2, Math.round(Number(input.maxImageRetries) || Number(process.env.SHORTS_MAX_IMAGE_RETRIES) || 2)));
