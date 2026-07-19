@@ -7,6 +7,7 @@ export const maxDuration = 60;
 
 type ChinaPlatform = "douyin" | "xiaohongshu";
 type SearchPlatform = ChinaPlatform | "all";
+type SearchMode = "popular" | "related";
 
 type SearchCandidate = {
   platform: ChinaPlatform;
@@ -113,15 +114,15 @@ async function generateDiscoveryKeywords(openai: OpenAI, query: string) {
         intent: item.intent,
       })).filter((item) => item.simplifiedChinese).slice(0, 8)
       : [];
-    return {
-      translatedProductName: String(parsed.translatedProductName || keywords[0]?.simplifiedChinese || query).trim().slice(0, 80),
-      keywords,
-    };
+    const translatedProductName = String(parsed.translatedProductName || keywords[0]?.simplifiedChinese || "").trim().slice(0, 80);
+    const koreanInput = /[\p{Script=Hangul}]/u.test(query);
+    const chinesePlanIsValid = translatedProductName
+      && keywords.length >= 5
+      && (!koreanInput || (!/[\p{Script=Hangul}]/u.test(translatedProductName) && keywords.every((item) => !/[\p{Script=Hangul}]/u.test(item.simplifiedChinese))));
+    if (!chinesePlanIsValid) throw new Error("Invalid Simplified Chinese search plan");
+    return { translatedProductName, keywords };
   } catch {
-    return {
-      translatedProductName: query,
-      keywords: [{ simplifiedChinese: query, koreanMeaning: query, intent: "product" as const }],
-    };
+    throw new Error("한국어를 중국어 간체 검색어로 변환하지 못했습니다. 잠시 후 다시 시도해주세요.");
   }
 }
 
@@ -143,9 +144,18 @@ function isRateLimited(key: string) {
   return false;
 }
 
-async function searchPlatform(openai: OpenAI, originalQuery: string, translatedProductName: string, keywords: DiscoveryKeyword[], platform: ChinaPlatform, limit: number) {
+async function searchPlatform(openai: OpenAI, translatedProductName: string, keywords: DiscoveryKeyword[], platform: ChinaPlatform, limit: number, mode: SearchMode) {
   const config = platformConfig[platform];
   const chineseQuery = Array.from(new Set([translatedProductName, ...keywords.map((item) => item.simplifiedChinese)])).filter(Boolean).slice(0, 5).join(" / ");
+  const searchGoal = mode === "popular"
+    ? [
+      "먼저 공개 좋아요, 반복 노출, 검색 상위 등 확인 가능한 인기 신호가 있는 개별 콘텐츠를 찾으세요.",
+      "인기 수치를 확인할 수 없다면 추정하지 말고, 상품과 가장 밀접한 개별 콘텐츠만 후보로 남기세요.",
+    ]
+    : [
+      "인기 신호가 확인되지 않았으므로 관련성 검색 단계입니다.",
+      "상품명, 해결 문제, 사용 상황, 후기·비교 검색어로 상품과 가장 가까운 개별 콘텐츠를 찾으세요.",
+    ];
   const response = await openai.responses.create({
     model: process.env.OPENAI_WEB_SEARCH_MODEL || "gpt-5.6",
     tools: [{
@@ -157,12 +167,12 @@ async function searchPlatform(openai: OpenAI, originalQuery: string, translatedP
     include: ["web_search_call.action.sources"],
     max_output_tokens: 900,
     input: [
-      `대표 입력: ${originalQuery}`,
       `중국어 검색어 후보: ${chineseQuery}`,
       `검색 대상: ${config.label}`,
       `공개 웹에 색인된 ${config.label}의 개별 세로형 쇼츠·영상 노트·상품 사용 장면 페이지를 최대 ${limit}개 찾으세요.`,
+      ...searchGoal,
       "15~60초의 짧은 사용 장면, 문제 해결, 전후 비교, 후기형 콘텐츠를 우선하고 장시간 영상·라이브·모음집은 제외하세요.",
-      "여러 중국어 후보를 실제 검색에 사용하고, 반복 노출되거나 공개 반응이 확인되는 개별 콘텐츠를 우선하세요.",
+      "대표가 입력한 한국어 문장을 그대로 검색하지 말고, 위 중국어 상품명과 중국어 검색어 후보를 실제 검색에 사용하세요.",
       "홈, 로그인, 검색결과, 사용자 프로필 페이지보다 개별 콘텐츠 페이지를 우선하세요.",
       "각 후보를 짧은 제목 목록으로 쓰고 반드시 해당 원문 페이지를 인용하세요.",
       "조회수·판매량·인기 순위를 추정하거나 만들지 마세요. 검색으로 확인되지 않은 결과도 만들지 마세요.",
@@ -205,6 +215,9 @@ async function searchPlatform(openai: OpenAI, originalQuery: string, translatedP
   const executedQueries = response.output.flatMap((item) => item.type === "web_search_call" && item.action.type === "search"
     ? item.action.queries || (item.action.query ? [item.action.query] : [])
     : []);
+  if (executedQueries.some((query) => /[\p{Script=Hangul}]/u.test(query))) {
+    throw new Error(`${config.label} 검색에 한국어가 섞여 결과를 폐기했습니다.`);
+  }
   return { candidates: Array.from(candidates.values()).slice(0, limit), executedQueries };
 }
 
@@ -239,42 +252,70 @@ export async function POST(request: NextRequest) {
     const keywordPlan = await generateDiscoveryKeywords(openai, query);
     const platforms: ChinaPlatform[] = platform === "all" ? ["douyin", "xiaohongshu"] : [platform];
     const perPlatformLimit = platform === "all" ? Math.ceil(totalLimit / 2) : totalLimit;
-    const settled = await Promise.allSettled(platforms.map((item) => searchPlatform(openai, query, keywordPlan.translatedProductName, keywordPlan.keywords, item, perPlatformLimit)));
-    const candidates = settled.flatMap((result) => result.status === "fulfilled" ? result.value.candidates : []);
-    const executedQueries = Array.from(new Set(settled.flatMap((result) => result.status === "fulfilled" ? result.value.executedQueries : []))).slice(0, 12);
-    const failedPlatforms = settled.flatMap((result, index) => result.status === "rejected" ? [platforms[index]] : []);
-    if (failedPlatforms.length === platforms.length && candidates.length === 0) {
-      throw new Error("공개 웹 검색 서비스가 응답하지 않았습니다. 잠시 후 다시 시도해주세요.");
+    const runSearch = async (mode: SearchMode) => {
+      const settled = await Promise.allSettled(platforms.map((item) => searchPlatform(openai, keywordPlan.translatedProductName, keywordPlan.keywords, item, perPlatformLimit, mode)));
+      return {
+        candidates: settled.flatMap((result) => result.status === "fulfilled" ? result.value.candidates : []),
+        executedQueries: settled.flatMap((result) => result.status === "fulfilled" ? result.value.executedQueries : []),
+        failedPlatforms: settled.flatMap((result, index) => result.status === "rejected" ? [platforms[index]] : []),
+      };
+    };
+
+    const hydrateCandidates = async (candidates: SearchCandidate[]) => {
+      const uniqueCandidates = Array.from(new Map(candidates.map((item) => [item.url, item])).values()).slice(0, totalLimit);
+      const metadata = await Promise.all(uniqueCandidates.map((item) => publicReferenceMetadata(item.url)));
+      return uniqueCandidates.map((item, index) => {
+        const fallbackTitle = `${platformConfig[item.platform].label} 공개 콘텐츠`;
+        const searchTitle = item.title === fallbackTitle ? "" : item.title;
+        const engagement = metadata[index]?.engagement || { likes: null, comments: null, saves: null };
+        const verifiedLikes = typeof engagement.likes === "number" ? engagement.likes : null;
+        return {
+          id: `china-search-${item.platform}-${index}-${Buffer.from(item.url).toString("base64url").slice(0, 16)}`,
+          platform: item.platform,
+          title: cleanTitle(searchTitle || metadata[index]?.title || fallbackTitle, fallbackTitle),
+          url: item.url,
+          thumbnailUrl: metadata[index]?.thumbnailUrl || "",
+          durationSeconds: metadata[index]?.durationSeconds ?? null,
+          engagement,
+          sourceRank: item.sourceRank,
+          popularityScore: verifiedLikes === null ? Math.max(1, 100 - item.sourceRank) : 1000 + Math.log10(verifiedLikes + 1) * 100,
+          popularityLabel: verifiedLikes === null ? "관련 쇼츠" : `공개 좋아요 ${verifiedLikes.toLocaleString("ko-KR")}`,
+          note: `${query} 관련 공개 웹 색인 결과 · 원본 파일 아님`,
+          rightsStatus: "unverified" as const,
+          canUseOriginal: false,
+          sourceLabel: "OpenAI 공개 웹 검색",
+        };
+      })
+        .filter((item) => item.durationSeconds === null || item.durationSeconds <= 60)
+        .sort((a, b) => b.popularityScore - a.popularityScore)
+        .slice(0, totalLimit);
+    };
+
+    const popularSearch = await runSearch("popular");
+    let finalSearch = popularSearch;
+    let results = await hydrateCandidates(popularSearch.candidates);
+    let usedRelatedFallback = false;
+    const initialPopularityEvidence = results.some((item) => typeof item.engagement.likes === "number" && item.engagement.likes > 0);
+    let relatedExecutedQueries: string[] = [];
+
+    if (!initialPopularityEvidence) {
+      usedRelatedFallback = true;
+      const relatedSearch = await runSearch("related");
+      relatedExecutedQueries = relatedSearch.executedQueries;
+      if (relatedSearch.candidates.length > 0 || popularSearch.candidates.length === 0) {
+        finalSearch = relatedSearch;
+      }
+      if (relatedSearch.candidates.length > 0) {
+        results = await hydrateCandidates(relatedSearch.candidates);
+      }
     }
 
-    const uniqueCandidates = Array.from(new Map(candidates.map((item) => [item.url, item])).values()).slice(0, totalLimit);
-    const metadata = await Promise.all(uniqueCandidates.map((item) => publicReferenceMetadata(item.url)));
-    const mappedResults = uniqueCandidates.map((item, index) => {
-      const fallbackTitle = `${platformConfig[item.platform].label} 공개 콘텐츠`;
-      const searchTitle = item.title === fallbackTitle ? "" : item.title;
-      const engagement = metadata[index]?.engagement || { likes: null, comments: null, saves: null };
-      const verifiedLikes = typeof engagement.likes === "number" ? engagement.likes : null;
-      return {
-        id: `china-search-${item.platform}-${index}-${Buffer.from(item.url).toString("base64url").slice(0, 16)}`,
-        platform: item.platform,
-        title: cleanTitle(searchTitle || metadata[index]?.title || fallbackTitle, fallbackTitle),
-        url: item.url,
-        thumbnailUrl: metadata[index]?.thumbnailUrl || "",
-        durationSeconds: metadata[index]?.durationSeconds ?? null,
-        engagement,
-        sourceRank: item.sourceRank,
-        popularityScore: verifiedLikes === null ? Math.max(1, 100 - item.sourceRank) : 1000 + Math.log10(verifiedLikes + 1) * 100,
-        popularityLabel: verifiedLikes === null ? "인기 후보" : `공개 좋아요 ${verifiedLikes.toLocaleString("ko-KR")}`,
-        note: `${query} 관련 공개 웹 색인 결과 · 원본 파일 아님`,
-        rightsStatus: "unverified" as const,
-        canUseOriginal: false,
-        sourceLabel: "OpenAI 공개 웹 검색",
-      };
-    });
-    const results = mappedResults
-      .filter((item) => item.durationSeconds === null || item.durationSeconds <= 60)
-      .sort((a, b) => b.popularityScore - a.popularityScore)
-      .slice(0, totalLimit);
+    const executedQueries = Array.from(new Set([...popularSearch.executedQueries, ...relatedExecutedQueries])).slice(0, 12);
+    const failedPlatforms = finalSearch.failedPlatforms;
+    if (failedPlatforms.length === platforms.length && results.length === 0) {
+      throw new Error("공개 웹 검색 서비스가 응답하지 않았습니다. 잠시 후 다시 시도해주세요.");
+    }
+    const resultMode: SearchMode = !usedRelatedFallback && initialPopularityEvidence ? "popular" : "related";
     const searchableText = results.map((item) => item.title.toLocaleLowerCase()).join(" ");
     const keywords = keywordPlan.keywords.map((item, index) => {
       const evidenceCount = searchableText.split(item.simplifiedChinese.toLocaleLowerCase()).length - 1;
@@ -293,12 +334,17 @@ export async function POST(request: NextRequest) {
       keywords,
       executedQueries,
       platform,
+      resultMode,
+      relatedFallbackApplied: usedRelatedFallback,
+      searchStrategy: "korean-input-to-simplified-chinese-popular-then-related",
       results,
       failedPlatforms,
       searchedAt: new Date().toISOString(),
       message: results.length
-        ? `${results.length}개의 공개 콘텐츠 후보를 찾았습니다. 필요한 카드를 골라 AI 소스함에 담으세요.${failedPlatforms.length ? " 일부 플랫폼 검색은 응답이 늦어 제외했습니다." : ""}`
-        : "공개 웹에 색인된 결과를 찾지 못했습니다. 중국어 간체 키워드로 바꾸거나 직접 링크 추가를 이용해주세요.",
+        ? resultMode === "popular"
+          ? `\"${query}\"을 \"${keywordPlan.translatedProductName}\"로 번역해 인기 신호가 확인된 쇼츠 ${results.length}개를 찾았습니다.${failedPlatforms.length ? " 일부 플랫폼 검색은 응답이 늦어 제외했습니다." : ""}`
+          : `\"${query}\"을 \"${keywordPlan.translatedProductName}\"로 번역해 중국어로 검색했습니다. 확인 가능한 인기 쇼츠가 없어 관련 쇼츠 ${results.length}개를 보여드립니다.${failedPlatforms.length ? " 일부 플랫폼 검색은 응답이 늦어 제외했습니다." : ""}`
+        : `\"${query}\"을 \"${keywordPlan.translatedProductName}\"로 번역해 검색했지만 인기·관련 쇼츠를 찾지 못했습니다. 아래 중국어 키워드 칩으로 다시 검색해주세요.`,
       usageRule: "검색 카드는 구조 분석용입니다. 원본 영상을 최종 편집에 사용하려면 권리 확인 파일을 별도로 업로드해야 합니다.",
     };
     cache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, payload });

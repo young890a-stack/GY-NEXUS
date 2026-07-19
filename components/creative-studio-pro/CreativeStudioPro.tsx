@@ -31,6 +31,9 @@ type Project = {
     mediaReferences?: MediaReference[];
     trendIntelligence?: TrendIntelligence;
     sourceMixPlan?: SourceMixPlan;
+    playbackSpeed?: 1 | 1.2 | 1.4;
+    subtitleCleanupMode?: "recreate-clean" | "safe-bottom-crop" | "keep-licensed";
+    sourceAudioMode?: "mute-korean-tts" | "mute";
     selectedHookIndex?: number;
     selectedHook?: string;
     contentApprovedAt?: string;
@@ -135,6 +138,7 @@ type ChinaConnectionStatus = {
 };
 
 type ChinaSearchPlatform = "all" | "douyin" | "xiaohongshu";
+type ChinaSearchResultMode = "popular" | "related";
 type ChinaKeywordInsight = {
   simplifiedChinese: string;
   koreanMeaning: string;
@@ -159,6 +163,14 @@ type ChinaSearchResult = {
   sourceMode?: "public-index" | "browser-account";
   nativeRank?: number;
   hashtags?: string[];
+};
+
+type ChinaPreviewState = {
+  item: ChinaSearchResult;
+  loading: boolean;
+  mode: "official-embed" | "platform-player" | "error";
+  embedUrl: string;
+  message: string;
 };
 
 type ReferenceAnalysis = {
@@ -250,7 +262,7 @@ type Scene = {
   error_message?: string | null;
 };
 
-type BusyState = "create" | "package" | "productization" | "media" | "reference" | "reference-video" | "reference-analysis" | "source-mix" | "china-search" | "china-import" | "content-approval" | "voice" | "image" | "images" | "approve" | "scene" | "all" | "render" | "publish" | null;
+type BusyState = "create" | "package" | "productization" | "media" | "reference" | "reference-video" | "reference-analysis" | "source-mix" | "china-search" | "china-import" | "shopping-pipeline" | "content-approval" | "voice" | "image" | "images" | "approve" | "scene" | "all" | "render" | "publish" | null;
 
 const styles = [
   ["cinematic-product", "영화형 상품 광고"],
@@ -319,7 +331,15 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
   const [chinaSearchResults, setChinaSearchResults] = useState<ChinaSearchResult[]>([]);
   const [chinaKeywords, setChinaKeywords] = useState<ChinaKeywordInsight[]>([]);
   const [translatedChinaProductName, setTranslatedChinaProductName] = useState("");
+  const [chinaSearchResultMode, setChinaSearchResultMode] = useState<ChinaSearchResultMode>("related");
   const [selectedChinaResultIds, setSelectedChinaResultIds] = useState<string[]>([]);
+  const [chinaPreview, setChinaPreview] = useState<ChinaPreviewState | null>(null);
+  const [shoppingPipelineStep, setShoppingPipelineStep] = useState(0);
+  const [editorPreferences, setEditorPreferences] = useState<{
+    playbackSpeed: 1 | 1.2 | 1.4;
+    subtitleCleanupMode: "recreate-clean" | "safe-bottom-crop" | "keep-licensed";
+    sourceAudioMode: "mute-korean-tts" | "mute";
+  }>({ playbackSpeed: 1.2, subtitleCleanupMode: "recreate-clean", sourceAudioMode: "mute-korean-tts" });
   const [chinaAccountConnectorStatus, setChinaAccountConnectorStatus] = useState<"checking" | "connected" | "not-installed" | "searching" | "error">("checking");
   const [chinaConnectionStatus, setChinaConnectionStatus] = useState<ChinaConnectionStatus | null>(null);
   const [mediaDraft, setMediaDraft] = useState({
@@ -353,6 +373,9 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
       }
       const nativeResults = Array.isArray(event.data.results) ? event.data.results as ChinaSearchResult[] : [];
       setChinaSearchResults((current) => Array.from(new Map([...nativeResults, ...current].map((item) => [item.url, item])).values()).slice(0, 12));
+      if (nativeResults.some((item) => typeof item.engagement?.likes === "number" && item.engagement.likes > 0)) {
+        setChinaSearchResultMode("popular");
+      }
       const nativeKeywords = Array.isArray(event.data.keywords) ? event.data.keywords as Array<{ keyword: string; count: number }> : [];
       if (nativeKeywords.length) {
         setChinaKeywords((current) => {
@@ -395,7 +418,8 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
   const inspirationMediaCount = mediaReferences.length - usableMediaCount;
   const singlePhotoMode = form.sourceMode === "single-photo-commerce";
   const productPreviewUrl = selected?.settings?.referenceImageUrls?.[0] || selected?.source_image_url || "";
-  const activeChinaKeyword = chinaSearchKeyword.trim() || selected?.product_name || form.productName || "인기 상품";
+  const activeChinaInput = chinaSearchKeyword.trim() || selected?.product_name || form.productName || "인기 상품";
+  const activeChinaKeyword = translatedChinaProductName || activeChinaInput;
 
   async function loadProjects(openLatest = false) {
     const response = await fetch("/api/creative-studio-pro/projects", { cache: "no-store" });
@@ -429,6 +453,17 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
         }))
         : []);
       setSelectedHookIndex(Number.isInteger(data.project.settings?.selectedHookIndex) ? data.project.settings.selectedHookIndex : null);
+      setEditorPreferences({
+        playbackSpeed: [1, 1.2, 1.4].includes(Number(data.project.settings?.playbackSpeed))
+          ? Number(data.project.settings.playbackSpeed) as 1 | 1.2 | 1.4
+          : 1.2,
+        subtitleCleanupMode: ["recreate-clean", "safe-bottom-crop", "keep-licensed"].includes(String(data.project.settings?.subtitleCleanupMode))
+          ? data.project.settings.subtitleCleanupMode
+          : "recreate-clean",
+        sourceAudioMode: ["mute-korean-tts", "mute"].includes(String(data.project.settings?.sourceAudioMode))
+          ? data.project.settings.sourceAudioMode as "mute-korean-tts" | "mute"
+          : "mute-korean-tts",
+      });
     } else {
       setError(data.message);
     }
@@ -659,14 +694,14 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
   }
 
   async function searchChinaSources(queryOverride?: string) {
-    const query = (queryOverride || activeChinaKeyword).trim();
+    const query = (queryOverride || activeChinaInput).trim();
     if (query.length < 2) {
       setError("찾을 상품명이나 중국어 키워드를 2자 이상 입력해주세요.");
       return;
     }
     setBusy("china-search");
     setError("");
-    setMessage("한국어 상품명을 중국어 검색어로 바꾸고 60초 이하 인기 쇼츠 후보를 찾고 있습니다.");
+    setMessage("한국어 입력을 중국어 간체로 번역한 뒤 인기 쇼츠를 먼저 찾고, 없으면 관련 쇼츠로 자동 전환합니다.");
     try {
       const response = await fetch("/api/creative-studio-pro/china-search", {
         method: "POST",
@@ -678,6 +713,7 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
       setChinaSearchResults(Array.isArray(data.results) ? data.results : []);
       setChinaKeywords(Array.isArray(data.keywords) ? data.keywords : []);
       setTranslatedChinaProductName(String(data.translatedProductName || ""));
+      setChinaSearchResultMode(data.resultMode === "popular" ? "popular" : "related");
       if (queryOverride) setChinaSearchKeyword(queryOverride);
       setSelectedChinaResultIds([]);
       setMessage(data.message);
@@ -697,7 +733,7 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
       return;
     }
     setChinaAccountConnectorStatus("searching");
-    setMessage("Edge에 로그인된 도우인·샤오홍슈 계정 화면에서 짧은 인기 쇼츠와 반복 태그를 확인하고 있습니다.");
+    setMessage("번역된 중국어로 도우인·샤오홍슈 계정 화면을 검색합니다. 인기 신호가 없으면 관련 쇼츠를 가져옵니다.");
     window.postMessage({
       source: "GY_NEXUS",
       type: "GY_CHINA_CONNECTOR_SEARCH",
@@ -714,43 +750,64 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
       : [...current, resultId]);
   }
 
+  async function openChinaPreview(item: ChinaSearchResult) {
+    setChinaPreview({ item, loading: true, mode: "platform-player", embedUrl: "", message: "공식 재생 방법을 확인하고 있습니다." });
+    try {
+      const response = await fetch("/api/creative-studio-pro/china-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: item.url }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || "영상 미리보기 준비 실패");
+      setChinaPreview({
+        item,
+        loading: false,
+        mode: data.mode === "official-embed" ? "official-embed" : "platform-player",
+        embedUrl: String(data.embedUrl || ""),
+        message: String(data.message || "원문 플레이어에서 재생할 수 있습니다."),
+      });
+    } catch (cause) {
+      setChinaPreview({ item, loading: false, mode: "error", embedUrl: "", message: cause instanceof Error ? cause.message : "영상 미리보기 준비 실패" });
+    }
+  }
+
+  function buildImportedSearchReferences() {
+    const selectedResults = chinaSearchResults.filter((item) => selectedChinaResultIds.includes(item.id));
+    if (!selectedResults.length) throw new Error("AI 믹스에 참고할 검색 카드를 하나 이상 선택해주세요.");
+    const existingUrls = new Set(mediaReferences.map((item) => item.url));
+    const availableSlots = Math.max(0, 20 - mediaReferences.length);
+    const newResults = selectedResults.filter((item) => !existingUrls.has(item.url)).slice(0, availableSlots);
+    if (!newResults.length) {
+      throw new Error(availableSlots === 0 ? "소스함은 최대 20개입니다. 기존 자료를 정리한 뒤 다시 담아주세요." : "선택한 검색 카드는 이미 소스함에 있습니다.");
+    }
+    const importedAt = Date.now();
+    const imported: MediaReference[] = newResults.map((item, index) => ({
+      id: `media-search-${importedAt}-${index}`,
+      platform: item.platform,
+      url: item.url,
+      title: item.title,
+      assetKind: "page-link",
+      rightsStatus: "unverified",
+      useInFinal: false,
+      includeInMixAnalysis: true,
+      notes: `${item.note}. 훅·촬영각도·판매 구조만 분석하고 원본 영상은 최종본에 사용하지 않습니다.`,
+      analysisFrameUrls: item.thumbnailUrl ? [item.thumbnailUrl] : [],
+      selectedKeywords: chinaKeywords.filter((keyword) => keyword.evidenceCount > 0).slice(0, 6).map((keyword) => keyword.simplifiedChinese),
+      createdAt: new Date().toISOString(),
+    }));
+    return { imported, nextReferences: [...mediaReferences, ...imported].slice(0, 20) };
+  }
+
   async function importChinaSearchResults() {
     if (!selected) {
       setError("먼저 작업할 쇼츠 프로젝트를 선택해주세요.");
       return;
     }
-    const selectedResults = chinaSearchResults.filter((item) => selectedChinaResultIds.includes(item.id));
-    if (!selectedResults.length) {
-      setError("AI 믹스에 참고할 검색 카드를 하나 이상 선택해주세요.");
-      return;
-    }
-    const existingUrls = new Set(mediaReferences.map((item) => item.url));
-    const availableSlots = Math.max(0, 20 - mediaReferences.length);
-    const newResults = selectedResults.filter((item) => !existingUrls.has(item.url)).slice(0, availableSlots);
-    if (!newResults.length) {
-      setError(availableSlots === 0 ? "소스함은 최대 20개입니다. 기존 자료를 정리한 뒤 다시 담아주세요." : "선택한 검색 카드는 이미 소스함에 있습니다.");
-      return;
-    }
-
     setBusy("china-import");
     setError("");
     try {
-      const importedAt = Date.now();
-      const imported: MediaReference[] = newResults.map((item, index) => ({
-        id: `media-search-${importedAt}-${index}`,
-        platform: item.platform,
-        url: item.url,
-        title: item.title,
-        assetKind: "page-link",
-        rightsStatus: "unverified",
-        useInFinal: false,
-        includeInMixAnalysis: true,
-        notes: `${item.note}. 훅·촬영각도·판매 구조만 분석하고 원본 영상은 최종본에 사용하지 않습니다.`,
-        analysisFrameUrls: item.thumbnailUrl ? [item.thumbnailUrl] : [],
-        selectedKeywords: chinaKeywords.filter((keyword) => keyword.evidenceCount > 0).slice(0, 6).map((keyword) => keyword.simplifiedChinese),
-        createdAt: new Date().toISOString(),
-      }));
-      const nextReferences = [...mediaReferences, ...imported].slice(0, 20);
+      const { imported, nextReferences } = buildImportedSearchReferences();
       setMediaReferences(nextReferences);
       const data = await persistMediaReferences(nextReferences);
       setSelectedChinaResultIds([]);
@@ -758,6 +815,56 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
       setMessage(`${imported.length}개 검색 카드를 AI 소스함에 저장했습니다. 필요한 카드를 고른 뒤 ‘선택 소스로 AI 짜집기 설계’를 누르세요. ${data.unchanged ? "" : "기존 믹스 승인은 안전하게 초기화했습니다."}`.trim());
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "검색 카드 저장 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function prepareSelectedShoppingShorts() {
+    if (!selected) {
+      setError("먼저 작업할 쇼츠 프로젝트를 선택해주세요.");
+      return;
+    }
+    setBusy("shopping-pipeline");
+    setShoppingPipelineStep(1);
+    setError("");
+    setMessage("선택한 영상을 소스함에 담고 AI 제작 설정을 저장하고 있습니다.");
+    try {
+      const { imported, nextReferences } = buildImportedSearchReferences();
+      setMediaReferences(nextReferences);
+      await persistMediaReferences(nextReferences);
+
+      setShoppingPipelineStep(2);
+      const settingsResponse = await fetch(`/api/creative-studio-pro/projects/${selected.id}/editor-settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editorPreferences),
+      });
+      const settingsData = await settingsResponse.json();
+      if (!settingsResponse.ok || !settingsData.success) throw new Error(settingsData.message || "AI 편집 설정 저장 실패");
+
+      setShoppingPipelineStep(3);
+      setMessage("선택 소스의 장면 역할을 분석해 15~30초 한국형 컷 순서를 만들고 있습니다.");
+      const mixResponse = await fetch(`/api/creative-studio-pro/projects/${selected.id}/source-mix`, { method: "POST" });
+      const mixData = await mixResponse.json();
+      if (!mixResponse.ok || !mixData.success) throw new Error(mixData.message || "AI 컷 편집 설계 실패");
+
+      setShoppingPipelineStep(4);
+      setMessage("한국어 훅·대본·정확한 자막·TTS용 문장·썸네일·게시정보를 만들고 있습니다.");
+      const packageResponse = await fetch(`/api/creative-studio-pro/projects/${selected.id}/productization`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
+      });
+      const packageData = await packageResponse.json();
+      if (!packageResponse.ok || !packageData.success) throw new Error(packageData.message || "한국형 판매 패키지 생성 실패");
+
+      setShoppingPipelineStep(5);
+      setSelectedChinaResultIds([]);
+      await openProject(selected);
+      setMessage(`${imported.length}개 영상을 바탕으로 AI 컷 편집, 한국어 대본·자막, 음성 준비, 썸네일·게시정보까지 연결했습니다. 아래에서 훅 하나를 승인한 뒤 AI 음성을 만들면 됩니다.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "쇼핑 쇼츠 자동 제작 준비 실패");
     } finally {
       setBusy(null);
     }
@@ -1204,7 +1311,7 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
 
           <div className="china-source-library">
             <div className="china-source-library-head">
-              <div><span className="eyebrow">GY SHORTS TREND FINDER</span><h4>한국어로 중국 인기 쇼츠 찾기</h4><p>한국어 상품명을 중국어 간체 검색어로 자동 변환하고, 60초 이하 세로형 쇼츠 후보와 반복 노출 키워드를 한 화면에서 골라 AI 믹스로 넘깁니다.</p></div>
+              <div><span className="eyebrow">GY SHORTS TREND FINDER</span><h4>한국어 입력 → 중국어로 자동 검색</h4><p>입력한 한국어를 AI가 중국어 간체 상품명과 키워드로 바꿔 도우인·샤오홍슈를 검색합니다. 인기 쇼츠가 없으면 관련 쇼츠로 자동 전환합니다.</p></div>
               <div className="china-connection-pills">
                 <span className={chinaConnectionStatus?.douyin.configured ? "connected" : "manual"}>도우인 · {chinaConnectionStatus?.douyin.configured ? "공식 앱 키 준비" : "내부 공개검색"}</span>
                 <span className={chinaConnectionStatus?.xiaohongshu.configured ? "connected" : "manual"}>샤오홍슈 · {chinaConnectionStatus?.xiaohongshu.configured ? "공식 앱 키 준비" : "내부 공개검색"}</span>
@@ -1215,19 +1322,19 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
               <button type="button" onClick={() => requestChinaAccountSearch()} disabled={chinaAccountConnectorStatus !== "connected" || Boolean(busy)}>로그인 계정으로 다시 찾기</button>
             </div>
             <div className="china-source-search">
-              <label><span>한국어 상품명으로 검색</span><input value={chinaSearchKeyword} onChange={(event) => setChinaSearchKeyword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !busy) void searchChinaSources(); }} placeholder={selected.product_name || "예: 손선풍기, 싱크대 배수망"} /></label>
+              <label><span>한국어 상품명 입력</span><input value={chinaSearchKeyword} onChange={(event) => setChinaSearchKeyword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !busy) void searchChinaSources(); }} placeholder={selected.product_name || "예: 손선풍기, 싱크대 배수망"} /></label>
               <label><span>검색 플랫폼</span><select value={chinaSearchPlatform} onChange={(event) => setChinaSearchPlatform(event.target.value as ChinaSearchPlatform)}><option value="all">도우인 + 샤오홍슈</option><option value="douyin">도우인만</option><option value="xiaohongshu">샤오홍슈만</option></select></label>
-              <button type="button" onClick={() => void searchChinaSources()} disabled={Boolean(busy)}>{busy === "china-search" ? "중국 인기 쇼츠 찾는 중..." : "한국어로 인기 쇼츠 찾기"}</button>
+              <button type="button" onClick={() => void searchChinaSources()} disabled={Boolean(busy)}>{busy === "china-search" ? "중국어로 번역·검색 중..." : "중국어로 자동 번역해 찾기"}</button>
             </div>
             <div className="china-search-fallback"><span>공개 웹 색인 결과가 부족할 때만 원문 검색을 보조로 사용</span><a href={`https://www.douyin.com/search/${encodeURIComponent(activeChinaKeyword)}`} target="_blank" rel="noreferrer">도우인 원문</a><a href={`https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(activeChinaKeyword)}`} target="_blank" rel="noreferrer">샤오홍슈 원문</a></div>
 
-            {chinaKeywords.length > 0 && <section className="china-keyword-panel" aria-label="중국어 인기 키워드 후보">
+            {chinaKeywords.length > 0 && <section className="china-keyword-panel" aria-label="중국어 검색 키워드 후보">
               <div><b>중국어 상품명</b><strong>{translatedChinaProductName}</strong><span>키워드를 누르면 그 검색어로 쇼츠를 다시 찾습니다.</span></div>
               <div className="china-keyword-chips">{chinaKeywords.map((keyword) => <button key={`${keyword.simplifiedChinese}-${keyword.intent}`} type="button" disabled={Boolean(busy)} onClick={() => void searchChinaSources(keyword.simplifiedChinese)}><b>{keyword.simplifiedChinese}</b><small>{keyword.koreanMeaning}</small><em>{keyword.trendLabel}{keyword.evidenceCount > 0 ? ` · ${keyword.evidenceCount}회` : ""}</em></button>)}</div>
             </section>}
 
             {chinaSearchResults.length > 0 && <section className="china-search-results" aria-label="중국 플랫폼 공개 콘텐츠 검색 결과">
-              <div className="china-search-results-head"><div><b>60초 이하 우선 인기 쇼츠 후보 {chinaSearchResults.length}개</b><span>확인된 장시간 영상은 제외 · {selectedChinaResultIds.length}개 선택</span></div><button type="button" onClick={importChinaSearchResults} disabled={Boolean(busy) || selectedChinaResultIds.length === 0}>{busy === "china-import" ? "소스함 저장 중..." : `선택 ${selectedChinaResultIds.length}개로 AI 믹스 준비`}</button></div>
+              <div className="china-search-results-head"><div><b>{chinaSearchResultMode === "popular" ? "중국어 인기 쇼츠" : "인기 결과가 없어 찾은 관련 쇼츠"} {chinaSearchResults.length}개</b><span>{chinaSearchResultMode === "popular" ? "확인 가능한 공개 인기 신호 우선" : "중국어 상품명·문제·사용 상황 관련성 우선"} · 장시간 영상 제외 · {selectedChinaResultIds.length}개 선택</span></div><div className="china-result-head-actions"><button type="button" className="secondary" onClick={importChinaSearchResults} disabled={Boolean(busy) || selectedChinaResultIds.length === 0}>{busy === "china-import" ? "저장 중..." : "소스함에만 저장"}</button><button type="button" onClick={() => void prepareSelectedShoppingShorts()} disabled={Boolean(busy) || selectedChinaResultIds.length === 0}>{busy === "shopping-pipeline" ? `AI 제작 준비 ${Math.max(1, shoppingPipelineStep)}/5` : `선택 ${selectedChinaResultIds.length}개로 AI 자동 제작`}</button></div></div>
               <div className="china-result-grid">{chinaSearchResults.map((item) => {
                 const isSelected = selectedChinaResultIds.includes(item.id);
                 return <article key={item.id} className={isSelected ? "selected" : ""}>
@@ -1242,14 +1349,25 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
                     </div>
                     <em>{item.platform === "douyin" ? "도우인" : "샤오홍슈"}{item.sourceMode === "browser-account" ? " · 로그인 계정" : " · 공개검색"}</em>
                     <b>{item.title}</b>
-                    <small>{item.durationSeconds ? "60초 이하 확인" : "길이 공개값 없음"} · 인기 신호 우선 정렬</small>
+                    <small>{item.durationSeconds ? "60초 이하 확인" : "길이 공개값 없음"} · {chinaSearchResultMode === "popular" ? "인기 신호 우선" : "관련성 우선"}</small>
                   </button>
-                  <a href={item.url} target="_blank" rel="noreferrer">로그인 계정으로 원문 보기 ↗</a>
+                  <div className="china-result-actions"><button type="button" onClick={() => void openChinaPreview(item)}>▶ 영상 재생</button><a href={item.url} target="_blank" rel="noreferrer">원문 열기 ↗</a></div>
                 </article>;
               })}</div>
             </section>}
 
-            <p className="china-source-rule">`인기 후보`는 공개 검색 노출 순서, 반복 키워드, 공개 좋아요 값이 있을 때만 반영합니다. 확인할 수 없는 조회수는 만들지 않습니다. 선택 카드는 훅·촬영각도·판매 구조 분석용이며, 최종 영상에는 직접 촬영하거나 사용 허가를 확인한 파일만 들어갑니다.</p>
+            {chinaSearchResults.length > 0 && <section className="shopping-ai-cockpit" aria-label="AI 쇼핑 쇼츠 자동 제작 설정">
+              <div className="shopping-ai-cockpit-head"><div><span>VIDEO FLOW MATCH</span><b>선택 영상 → AI 컷 → 한국어 자막·음성 → 썸네일·게시정보</b><p>영상에서 본 제작 흐름을 한 버튼으로 준비합니다. 최종 원본 컷은 권리를 확인한 파일만 사용합니다.</p></div><strong>{selected.duration_seconds}초</strong></div>
+              <div className="shopping-editor-settings">
+                <div><span>편집 속도</span><div>{([1, 1.2, 1.4] as const).map((speed) => <button type="button" key={speed} className={editorPreferences.playbackSpeed === speed ? "selected" : ""} onClick={() => setEditorPreferences((current) => ({ ...current, playbackSpeed: speed }))}>{speed.toFixed(1)}x</button>)}</div></div>
+                <label><span>중국어 화면 자막</span><select value={editorPreferences.subtitleCleanupMode} onChange={(event) => setEditorPreferences((current) => ({ ...current, subtitleCleanupMode: event.target.value as typeof current.subtitleCleanupMode }))}><option value="recreate-clean">AI 새 장면으로 깨끗하게 재제작</option><option value="safe-bottom-crop">허가 영상 하단 안전 크롭</option><option value="keep-licensed">허가 영상 원문 유지</option></select></label>
+                <label><span>원본 음성</span><select value={editorPreferences.sourceAudioMode} onChange={(event) => setEditorPreferences((current) => ({ ...current, sourceAudioMode: event.target.value as typeof current.sourceAudioMode }))}><option value="mute-korean-tts">원음 제거＋한국어 AI 음성</option><option value="mute">원음 제거＋무음</option></select></label>
+              </div>
+              <div className="shopping-pipeline-progress">{["소스 저장", "편집 설정", "AI 컷 설계", "대본·썸네일", "검수 준비"].map((label, index) => <span key={label} className={shoppingPipelineStep > index ? "done" : busy === "shopping-pipeline" && shoppingPipelineStep === index + 1 ? "active" : ""}><i>{shoppingPipelineStep > index ? "✓" : index + 1}</i>{label}</span>)}</div>
+              <button type="button" className="shopping-pipeline-button" onClick={() => void prepareSelectedShoppingShorts()} disabled={Boolean(busy) || selectedChinaResultIds.length === 0}>{busy === "shopping-pipeline" ? `자동 제작 준비 중 · ${Math.max(1, shoppingPipelineStep)}/5` : `선택 ${selectedChinaResultIds.length}개로 쇼핑 쇼츠 자동 제작 준비`}</button>
+            </section>}
+
+            <p className="china-source-rule">한국어는 검색 입력으로만 사용하고, 실제 플랫폼 검색은 AI가 만든 중국어 간체 상품명과 키워드로 실행합니다. 공개 좋아요 등 인기 근거가 없으면 `인기`라고 표시하지 않고 관련 쇼츠로 자동 전환합니다. 선택 카드는 구조 분석용이며 최종 영상에는 권리를 확인한 파일만 들어갑니다.</p>
           </div>
 
           <div className="media-reference-form">
@@ -1435,6 +1553,22 @@ export default function CreativeStudioPro({ shoppingCenterMode = false }: { shop
 
         {selected.final_video_url && <div className="final-preview"><h3>최종 완성 영상</h3><video src={selected.final_video_url} controls playsInline /><div className="final-publish-actions"><a className="button button-primary" href={selected.final_video_url} target="_blank" rel="noreferrer">원본 열기</a><button className="button button-primary" type="button" onClick={queueYouTube} disabled={Boolean(busy) || !contentApproved || !commercePackage}>{busy === "publish" ? "대기열 등록 중..." : "YouTube 비공개 게시 대기열"}</button><a className="button button-light" href="/admin/publishing">통합 게시센터 열기</a></div></div>}
       </section>}
+
+      {chinaPreview && <div className="china-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setChinaPreview(null); }}>
+        <section className="china-preview-modal" role="dialog" aria-modal="true" aria-label="중국 쇼츠 영상 미리보기">
+          <div className="china-preview-head"><div><span>{chinaPreview.item.platform === "douyin" ? "DOUYIN" : "XIAOHONGSHU"} PREVIEW</span><b>{chinaPreview.item.title}</b></div><button type="button" onClick={() => setChinaPreview(null)} aria-label="미리보기 닫기">×</button></div>
+          <div className="china-preview-player">
+            {chinaPreview.loading && <div className="china-preview-loading"><i>▶</i><b>공식 재생 방법 확인 중</b></div>}
+            {!chinaPreview.loading && chinaPreview.mode === "official-embed" && chinaPreview.embedUrl && <iframe src={chinaPreview.embedUrl} title={chinaPreview.item.title} allow="autoplay; fullscreen" allowFullScreen referrerPolicy="unsafe-url" />}
+            {!chinaPreview.loading && chinaPreview.mode !== "official-embed" && <div className="china-preview-fallback">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {chinaPreview.item.thumbnailUrl ? <img src={chinaPreview.item.thumbnailUrl} alt="" /> : <span>{chinaPreview.item.platform === "douyin" ? "抖音" : "小红书"}</span>}
+              <div><b>로그인된 Edge 원문 플레이어에서 재생</b><p>{chinaPreview.message}</p><a href={chinaPreview.item.url} target="_blank" rel="noreferrer">▶ 지금 영상 재생</a></div>
+            </div>}
+          </div>
+          <div className="china-preview-foot"><p>{chinaPreview.message}</p><button type="button" className={selectedChinaResultIds.includes(chinaPreview.item.id) ? "selected" : ""} onClick={() => toggleChinaSearchResult(chinaPreview.item.id)}>{selectedChinaResultIds.includes(chinaPreview.item.id) ? "✓ AI 믹스 선택됨" : "+ 이 영상을 AI 믹스에 선택"}</button></div>
+        </section>
+      </div>}
     </div>
   );
 }

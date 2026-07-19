@@ -13,7 +13,11 @@ VALIDATION
 
 SEARCH FLOW
 - Korean product query to Simplified Chinese product name
+- Korean text is never used as the platform search query
+- Translation failure stops the search instead of silently searching in Korean
 - 5-8 product/problem/use-case/review/viral keyword suggestions
+- Verified-popularity search first, automatic related-content search fallback
+- Results without verifiable popularity evidence are honestly labeled as related shorts
 - Keyword chips for one-click Chinese re-search
 - Douyin and Xiaohongshu short-form cards in a 9:16 grid
 - Known videos longer than 60 seconds removed

@@ -1,0 +1,43 @@
+GY-NEXUS SHOPPING SHORTS VIDEO FLOW V2.4
+Build date: 2026-07-20
+
+VALIDATION
+- TypeScript: PASS
+- ESLint: PASS, 0 errors and 7 pre-existing warnings
+- Next.js production build: PASS
+- Douyin official preview API route: PASS
+- Editor settings API route: PASS
+- FFmpeg worker syntax: PASS
+
+VIDEO REVIEW COVERAGE
+- 285.66-second reference recording reviewed at 4-second and 8-second intervals
+- Search gallery and multi-select flow
+- Search-result playback
+- AI product and scene analysis
+- Target-duration cut planning
+- Chinese source-audio removal and Korean TTS
+- Subtitle cleanup and exact Korean subtitles
+- 1.4x speed control
+- Hook generation and approval
+- Thumbnail template selection
+- Export and publishing handoff
+
+IMPLEMENTED
+- Official Douyin VideoID iframe preview
+- Logged-in platform-player fallback for Douyin and Xiaohongshu
+- Preview modal with AI-mix selection
+- Search-card play button
+- One-button selected-source production preparation
+- Five-stage progress feedback
+- 1.0x, 1.2x, and 1.4x edit speed settings
+- Recreate-clean, safe-bottom-crop, and licensed-original subtitle modes
+- Source-audio mute with Korean TTS or silent output
+- Worker and CapCut export settings integration
+
+RIGHTS AND PLATFORM LIMITS
+- No protected video stream extraction
+- No automatic third-party video download
+- No watermark removal
+- Unverified search results remain analysis-only
+- Original final cuts require owned, seller-provided, affiliate-provided, or permission-confirmed video files
+- Xiaohongshu has no verified public embed API in the reviewed official documentation

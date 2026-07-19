@@ -123,6 +123,7 @@ async function mapWithConcurrency(items, concurrency, task) {
 
 function buildPlan(project, scenes) {
   const settings = record(project.settings);
+  const recreateClean = settings.subtitleCleanupMode === "recreate-clean";
   const references = Array.isArray(settings.licensedFinalAssets) ? settings.licensedFinalAssets : [];
   const generated = scenes.filter((scene) => scene.video_url).map((scene) => ({
     url: scene.video_url,
@@ -138,7 +139,7 @@ function buildPlan(project, scenes) {
     return sourceMix.cuts.map((shot) => {
       const duration = Math.max(.7, Math.min(2.5, Number(shot.durationSeconds) || 1.5));
       const reference = referenceMap.get(String(shot.referenceId || ""));
-      if (shot.decision === "use-licensed" && reference?.url) {
+      if (shot.decision === "use-licensed" && reference?.url && !recreateClean) {
         return { url: reference.url, duration, kind: "licensed" };
       }
       const source = generated[sceneIndex % Math.max(1, generated.length)];
@@ -190,6 +191,9 @@ async function renderJob(jobId, body) {
   try {
     const project = record(body.project);
     const settings = record(project.settings);
+    const playbackSpeed = [1, 1.2, 1.4].includes(Number(settings.playbackSpeed)) ? Number(settings.playbackSpeed) : 1.2;
+    const subtitleCleanupMode = String(settings.subtitleCleanupMode || "recreate-clean");
+    const sourceAudioMode = String(settings.sourceAudioMode || "mute-korean-tts");
     const scenes = Array.isArray(body.scenes) ? body.scenes : [];
     const plan = buildPlan(project, scenes);
     if (!plan.length) throw new Error("합성할 승인 장면 영상이 없습니다.");
@@ -209,7 +213,10 @@ async function renderJob(jobId, body) {
         await download(fallback, sourcePath, "video");
       }
       const normalizedPath = join(root, `clip-${index}.mp4`);
-      await run("ffmpeg", ["-y", "-i", sourcePath, "-t", String(planItem.duration), "-vf", `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p`, "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", normalizedPath], root);
+      const subtitleCrop = subtitleCleanupMode === "safe-bottom-crop" && planItem.kind === "licensed"
+        ? "crop=iw:trunc(ih*0.84/2)*2:0:0,"
+        : "";
+      await run("ffmpeg", ["-y", "-i", sourcePath, "-t", String(planItem.duration), "-vf", `setpts=PTS/${playbackSpeed},${subtitleCrop}scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,format=yuv420p`, "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", normalizedPath], root);
       return normalizedPath;
     });
     const concatPath = join(root, "concat.txt");
@@ -225,7 +232,7 @@ async function renderJob(jobId, body) {
     const inputs = ["-i", joinedPath];
     const audioFilters = [];
     const audioLabels = [];
-    if (settings.voiceAudioUrl) {
+    if (settings.voiceAudioUrl && sourceAudioMode === "mute-korean-tts") {
       const voicePath = join(root, "voice.mp3");
       await download(settings.voiceAudioUrl, voicePath, "audio");
       inputs.push("-i", voicePath);
