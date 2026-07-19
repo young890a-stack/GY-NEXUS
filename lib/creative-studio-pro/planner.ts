@@ -15,6 +15,7 @@ export function planScenes(input: ProProjectInput): PlannedScene[] {
   const product = input.productName.trim() || input.title.trim();
   const description = input.productDescription.trim() || "제품의 핵심 장점과 실제 사용 가치";
   const master = input.masterPrompt.trim();
+  const singlePhoto = input.sourceMode === "single-photo-commerce";
 
   return Array.from({ length: count }, (_, index) => {
     const sceneNumber = index + 1;
@@ -36,6 +37,9 @@ export function planScenes(input: ProProjectInput): PlannedScene[] {
         `제품: ${product}.`,
         `제품 정보: ${description}.`,
         `연출: ${styleDirection[input.style]}.`,
+        singlePhoto
+          ? "한 장의 실제 상품 사진을 사실 기준으로 사용한다. 사진에 보이지 않는 뒤·옆면, 버튼, 포트나 구성품을 새로 만들지 않고 동일한 전면 형태를 유지한 채 배경·조명·구도만 바꾼다."
+          : "서로 다른 실제 상품 사진을 사실 기준으로 사용해 모든 장면에서 같은 모델과 구성품을 유지한다.",
         master ? `추가 지시: ${master}.` : "",
         "한 장면 안에서 하나의 행동만 명확히 보여주고, 화면 안에 글자나 로고를 새로 만들지 않는다.",
         "사람의 손과 제품 형태가 자연스럽고, 과장 광고 없이 실제 촬영처럼 표현한다.",

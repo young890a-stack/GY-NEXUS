@@ -1,8 +1,11 @@
-export type ProDuration = 20 | 25 | 30;
+export type ProDuration = 15 | 20 | 25 | 30;
 export type ProRatio = "720:1280" | "1280:720";
 export type ProStyle = "cinematic-product" | "emotional-brand" | "how-to" | "ugc-review" | "problem-solution";
 export type SubtitleMode = "korean" | "none";
 export type VoiceMode = "female" | "male" | "music-only" | "silent";
+export type ProSourceMode = "single-photo-commerce" | "premium-multi-photo";
+export type SubtitleStyle = "bold-pop" | "clean-card" | "minimal";
+export type ThumbnailStyle = "benefit-arrow" | "problem-solution" | "clean-product";
 
 export type ProProjectInput = {
   title: string;
@@ -10,6 +13,7 @@ export type ProProjectInput = {
   productName: string;
   productDescription: string;
   masterPrompt: string;
+  sourceMode?: ProSourceMode;
   sourceImageUrl?: string;
   referenceImageUrls?: string[];
   duration: ProDuration;
@@ -18,6 +22,11 @@ export type ProProjectInput = {
   subtitleMode: SubtitleMode;
   voiceMode: VoiceMode;
   musicMood: string;
+  subtitleStyle?: SubtitleStyle;
+  thumbnailStyle?: ThumbnailStyle;
+  sfxMode?: "recommended" | "minimal" | "none";
+  affiliateUrl?: string;
+  platformTargets?: Array<"youtube" | "instagram" | "douyin" | "xiaohongshu">;
   qualityThreshold?: number;
   maxImageRetries?: number;
 };

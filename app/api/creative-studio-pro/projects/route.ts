@@ -19,15 +19,19 @@ export async function POST(request: Request) {
   try {
     const input = (await request.json()) as ProProjectInput;
     if (!input.title?.trim() || !input.productName?.trim()) return NextResponse.json({ success: false, message: "작업명과 상품명을 입력해주세요." }, { status: 400 });
-    if (![20,25,30].includes(input.duration)) return NextResponse.json({ success: false, message: "영상 길이는 20초, 25초, 30초 중에서 선택해주세요." }, { status: 400 });
+    if (![15,20,25,30].includes(input.duration)) return NextResponse.json({ success: false, message: "영상 길이는 15초, 20초, 25초, 30초 중에서 선택해주세요." }, { status: 400 });
     const referenceImageUrls = Array.from(new Set([
       ...(Array.isArray(input.referenceImageUrls) ? input.referenceImageUrls : []),
       input.sourceImageUrl || "",
     ].map((value) => value.trim()).filter(Boolean))).slice(0, 4);
-    if (referenceImageUrls.length < 2) {
+    const sourceMode = input.sourceMode === "single-photo-commerce" ? "single-photo-commerce" : "premium-multi-photo";
+    const minimumReferences = sourceMode === "single-photo-commerce" ? 1 : 2;
+    if (referenceImageUrls.length < minimumReferences) {
       return NextResponse.json({
         success: false,
-        message: "유료 품질 기준을 위해 실제 상품 사진을 서로 다른 각도로 최소 2장 올려주세요.",
+        message: minimumReferences === 1
+          ? "사진 한 장 쇼츠를 만들려면 실제 상품 이미지 1장을 올려주세요."
+          : "유료 품질 기준을 위해 실제 상품 사진을 서로 다른 각도로 최소 2장 올려주세요.",
       }, { status: 400 });
     }
     const qualityThreshold = Math.max(80, Math.min(95, Math.round(Number(input.qualityThreshold) || Number(process.env.SHORTS_QUALITY_THRESHOLD) || 85)));
@@ -41,7 +45,7 @@ export async function POST(request: Request) {
       duration_seconds: input.duration, ratio: input.ratio, style: input.style, subtitle_mode: input.subtitleMode,
       voice_mode: input.voiceMode, music_mood: input.musicMood || "clean-corporate", status: "planned", scene_count: scenes.length,
       quality_threshold: qualityThreshold, max_image_retries: maxImageRetries, render_approved: false,
-      settings: { ...input, referenceImageUrls, qualityThreshold, maxImageRetries },
+      settings: { ...input, sourceMode, referenceImageUrls, qualityThreshold, maxImageRetries },
     }).select("*").single();
     if (error || !project) throw error || new Error("프로젝트 저장 실패");
 

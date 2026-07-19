@@ -1,0 +1,36 @@
+GY-NEXUS PHOTO COMMERCE SHORTS BUILD REPORT
+Date: 2026-07-19
+
+Implemented
+- Single-photo commerce source mode
+- Premium 2-4 reference mode retained
+- 15/20/25/30 second duration support
+- One-image conservative visual lock
+- Korean commerce package generation
+- Three hooks and three thumbnail directions
+- Title, description, hashtags, CTA and affiliate disclosure
+- Korean OpenAI TTS generation and preview
+- Subtitle, thumbnail and SFX preferences
+- Publish package TXT export
+- Existing SRT, CapCut guide and JSON exports extended
+- Runway cost approval gate retained
+
+Verification
+- npm run typecheck: PASS
+- npm run lint: PASS with 0 errors and 7 pre-existing warnings
+- npm run build: PASS
+- Next.js production routes generated: 75 pages/routes
+- New routes:
+  /api/creative-studio-pro/projects/[id]/commerce-package
+  /api/creative-studio-pro/projects/[id]/voice
+
+Not executed automatically
+- Paid OpenAI image, text and TTS requests
+- Paid Runway video generation
+- Production Supabase migration
+
+Required before production use
+1. Run supabase/PHOTO-COMMERCE-SHORTS-MIGRATION.sql
+2. Overwrite project files and deploy
+3. Test one owned or licensed product image
+4. Confirm product identity before approving Runway cost

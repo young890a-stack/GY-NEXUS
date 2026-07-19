@@ -68,6 +68,49 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       });
     }
 
+    if (format === "package") {
+      const commerce = project.settings?.commercePackage;
+      if (!commerce) {
+        return NextResponse.json({ success: false, message: "먼저 판매 패키지를 생성해주세요." }, { status: 400 });
+      }
+      const packageText = [
+        "GY-NEXUS · 쇼핑 쇼츠 게시 패키지",
+        "",
+        `상품: ${project.product_name}`,
+        `제목: ${commerce.title || project.title}`,
+        "",
+        "[첫 2초 훅]",
+        ...(Array.isArray(commerce.hookOptions) ? commerce.hookOptions.map((hook: unknown, index: number) => `${index + 1}. ${String(hook)}`) : []),
+        "",
+        "[전체 대본]",
+        String(commerce.voiceover || ""),
+        "",
+        "[영상 설명]",
+        String(commerce.description || ""),
+        "",
+        "[CTA]",
+        String(commerce.cta || ""),
+        "",
+        "[제휴 고지]",
+        String(commerce.disclosure || ""),
+        "",
+        "[해시태그]",
+        Array.isArray(commerce.hashtags) ? commerce.hashtags.map(String).join(" ") : "",
+        "",
+        "[썸네일 3안]",
+        ...(Array.isArray(commerce.thumbnailOptions) ? commerce.thumbnailOptions.map((item: Record<string, unknown>, index: number) => `${index + 1}. ${String(item.headline || "")} / ${String(item.accent || "")}`) : []),
+        "",
+        `제휴 링크: ${project.settings?.affiliateUrl || "미연결"}`,
+        `AI 음성: ${project.settings?.voiceAudioUrl || "미생성"}`,
+      ].join("\n");
+      return new Response(packageText, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${safeName}-publish-package.txt"`,
+        },
+      });
+    }
+
     const manifest = {
       version: "GY-SHORTS-QUALITY-1.0",
       exportedAt: new Date().toISOString(),
@@ -80,6 +123,13 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         ratio: project.ratio,
         style: project.style,
         finalVideoUrl: project.final_video_url || null,
+        sourceMode: project.settings?.sourceMode || "premium-multi-photo",
+        affiliateUrl: project.settings?.affiliateUrl || null,
+        subtitleStyle: project.settings?.subtitleStyle || "bold-pop",
+        thumbnailStyle: project.settings?.thumbnailStyle || "benefit-arrow",
+        sfxMode: project.settings?.sfxMode || "recommended",
+        commercePackage: project.settings?.commercePackage || null,
+        voiceAudioUrl: project.settings?.voiceAudioUrl || null,
         referenceImageUrls: project.reference_image_urls || [],
         qualityThreshold: project.quality_threshold,
       },

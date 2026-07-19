@@ -153,8 +153,8 @@ export async function analyzeProductVisualProfile(input: {
   referenceImageUrls: string[];
 }) {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY가 없습니다.");
-  if (input.referenceImageUrls.length < 2) {
-    throw new Error("상품 동일성 분석을 위해 서로 다른 각도의 실제 상품 사진이 최소 2장 필요합니다.");
+  if (input.referenceImageUrls.length < 1) {
+    throw new Error("상품 동일성 분석을 위해 실제 상품 사진이 최소 1장 필요합니다.");
   }
 
   const model = process.env.OPENAI_QUALITY_MODEL || process.env.OPENAI_STRATEGY_MODEL || "gpt-5.6-sol";
@@ -169,7 +169,9 @@ export async function analyzeProductVisualProfile(input: {
       `상품명: ${input.productName}`,
       `검증된 설명: ${input.productDescription || "설명 없음"}`,
       "이어지는 실제 상품 사진만 사실 기준으로 사용한다.",
-      "여러 사진에 공통으로 확인되는 색상, 재질, 실루엣, 버튼, 포트, 로고, 구성품을 추출한다.",
+      input.referenceImageUrls.length === 1
+        ? "사진 한 장에서 실제로 보이는 색상, 재질, 실루엣, 버튼, 포트, 로고와 구성품만 추출한다. 보이지 않는 뒤·옆면은 추측하지 않는다."
+        : "여러 사진에 공통으로 확인되는 색상, 재질, 실루엣, 버튼, 포트, 로고, 구성품을 추출한다.",
       "사진에서 확인할 수 없는 내용은 추측하지 말고 referenceGaps에 기록한다.",
       "forbiddenChanges에는 AI가 바꾸면 다른 상품이 되는 핵심 특징을 구체적으로 적는다.",
       "서로 다른 각도와 세부 구조를 판별하기 충분한지 referenceCoverageScore를 엄격히 평가한다.",
@@ -225,8 +227,8 @@ export async function reviewSceneImageCandidates(input: {
   threshold: number;
 }) {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY가 없습니다.");
-  if (input.referenceImageUrls.length < 2 || !input.candidates.length) {
-    throw new Error("품질검수에는 실제 상품 사진 2장 이상과 후보 이미지가 필요합니다.");
+  if (input.referenceImageUrls.length < 1 || !input.candidates.length) {
+    throw new Error("품질검수에는 실제 상품 사진 1장 이상과 후보 이미지가 필요합니다.");
   }
 
   const model = process.env.OPENAI_QUALITY_MODEL || process.env.OPENAI_STRATEGY_MODEL || "gpt-5.6-sol";

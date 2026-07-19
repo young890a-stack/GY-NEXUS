@@ -77,14 +77,16 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
 
     sceneId = scene.id;
     const references = referenceUrls(project as Record<string, unknown>);
-    if (references.length < 2) {
-      throw new Error("유료 품질 기준을 위해 앞·뒤 또는 서로 다른 각도의 실제 상품 사진을 최소 2장 올려주세요.");
-    }
+    const settings = objectValue(project.settings);
+    const singlePhoto = settings.sourceMode === "single-photo-commerce";
+    const minimumReferences = singlePhoto ? 1 : 2;
+    if (references.length < minimumReferences) throw new Error(singlePhoto
+      ? "사진 한 장 쇼츠를 만들려면 실제 상품 이미지 1장을 올려주세요."
+      : "유료 품질 기준을 위해 앞·뒤 또는 서로 다른 각도의 실제 상품 사진을 최소 2장 올려주세요.");
     const threshold = Math.max(80, Math.min(95, Number(project.quality_threshold) || 85));
     const maxRetries = Math.max(1, Math.min(2, Number(project.max_image_retries) || 2));
     const attempt = Math.max(0, Number(scene.image_retry_count) || 0) + 1;
 
-    const settings = objectValue(project.settings);
     let visualProfile = settings.visualProfile;
     if (!isProductVisualProfile(visualProfile)) {
       const analysis = await analyzeProductVisualProfile({
@@ -99,7 +101,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
       }).eq("id", id);
     }
     if (!isProductVisualProfile(visualProfile)) throw new Error("상품 시각 정체성을 확정하지 못했습니다.");
-    if (visualProfile.referenceCoverageScore < 72) {
+    if (!singlePhoto && visualProfile.referenceCoverageScore < 72) {
       const gaps = visualProfile.referenceGaps.join(" · ") || "상품의 앞·뒤·측면 세부 구조가 부족합니다.";
       throw new Error(`상품 사진 사실자료가 부족합니다(${visualProfile.referenceCoverageScore}점). ${gaps}`);
     }
@@ -129,6 +131,9 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
       scene.prompt,
       formatProductVisualLock(visualProfile),
       "제공된 상품 참조 이미지의 동일한 제품을 사용한다.",
+      singlePhoto
+        ? "사진 한 장 쇼츠 모드다. 원본에서 보이지 않는 뒤·옆면, 버튼, 포트나 구성품을 새로 만들지 않는다. 동일한 전면 제품을 유지하고 배경·조명·그래픽 연출만 바꾼다."
+        : "서로 다른 실제 사진에서 확인된 구조만 장면에 사용한다.",
       "상품의 색상, 외형, 버튼, 포트, 구성품, 재질과 비율을 임의로 바꾸지 않는다.",
       "세로형 9:16 쇼핑 쇼츠의 한 장면이며 한 장면에는 하나의 행동만 보여준다.",
       "이미지 안에 상품명, 가격, 자막, 로고, 인증마크 또는 읽을 수 있는 글자를 새로 만들지 않는다.",

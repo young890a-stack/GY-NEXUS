@@ -7,7 +7,7 @@ create table if not exists public.video_projects (
   product_description text not null default '',
   master_prompt text not null default '',
   source_image_url text,
-  duration_seconds integer not null check (duration_seconds in (20,25,30)),
+  duration_seconds integer not null check (duration_seconds in (15,20,25,30)),
   scene_count integer not null,
   ratio text not null default '720:1280',
   style text not null default 'cinematic-product',

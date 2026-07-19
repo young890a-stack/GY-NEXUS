@@ -6,6 +6,8 @@ type Project = {
   id: string;
   title: string;
   product_name: string;
+  product_description?: string;
+  source_image_url?: string | null;
   duration_seconds: number;
   ratio: string;
   style: string;
@@ -14,6 +16,15 @@ type Project = {
   quality_threshold?: number;
   final_video_url?: string | null;
   settings?: {
+    sourceMode?: "single-photo-commerce" | "premium-multi-photo";
+    referenceImageUrls?: string[];
+    affiliateUrl?: string;
+    subtitleStyle?: string;
+    thumbnailStyle?: string;
+    sfxMode?: string;
+    commercePackage?: CommercePackage;
+    voiceAudioUrl?: string;
+    voiceName?: string;
     visualProfile?: {
       identitySummary?: string;
       referenceCoverageScore?: number;
@@ -22,6 +33,23 @@ type Project = {
     };
   } | null;
   created_at: string;
+};
+
+type CommercePackage = {
+  title: string;
+  hookOptions: string[];
+  voiceover: string;
+  description: string;
+  hashtags: string[];
+  disclosure: string;
+  cta: string;
+  thumbnailOptions: Array<{
+    headline: string;
+    accent: string;
+    layout: "benefit-arrow" | "problem-solution" | "clean-product";
+  }>;
+  verifiedClaims: string[];
+  cautions: string[];
 };
 
 type QualityMetrics = {
@@ -74,7 +102,7 @@ type Scene = {
   error_message?: string | null;
 };
 
-type BusyState = "create" | "image" | "images" | "approve" | "scene" | "all" | "render" | null;
+type BusyState = "create" | "package" | "voice" | "image" | "images" | "approve" | "scene" | "all" | "render" | null;
 
 const styles = [
   ["cinematic-product", "영화형 상품 광고"],
@@ -98,9 +126,11 @@ export default function CreativeStudioPro() {
   const [form, setForm] = useState({
     title: "GY-NEXUS 20초 상품 영상",
     productUrl: "",
+    affiliateUrl: "",
     productName: "",
     productDescription: "",
     masterPrompt: "첫 2초는 강한 시각적 훅, 실제 사용 장면 중심, 과장 없는 프리미엄 광고",
+    sourceMode: "single-photo-commerce",
     sourceImageUrl: "",
     duration: 20,
     ratio: "720:1280",
@@ -108,6 +138,10 @@ export default function CreativeStudioPro() {
     subtitleMode: "korean",
     voiceMode: "female",
     musicMood: "modern-corporate",
+    subtitleStyle: "bold-pop",
+    thumbnailStyle: "benefit-arrow",
+    sfxMode: "recommended",
+    platformTargets: ["youtube", "instagram"],
     qualityThreshold: 85,
     maxImageRetries: 2,
   });
@@ -128,6 +162,9 @@ export default function CreativeStudioPro() {
   const imageProgress = scenes.length ? Math.round((imageApproved / scenes.length) * 100) : 0;
   const videoProgress = scenes.length ? Math.round((completed / scenes.length) * 100) : 0;
   const visualProfile = selected?.settings?.visualProfile;
+  const commercePackage = selected?.settings?.commercePackage;
+  const singlePhotoMode = form.sourceMode === "single-photo-commerce";
+  const productPreviewUrl = selected?.settings?.referenceImageUrls?.[0] || selected?.source_image_url || "";
 
   async function loadProjects() {
     const response = await fetch("/api/creative-studio-pro/projects", { cache: "no-store" });
@@ -177,8 +214,11 @@ export default function CreativeStudioPro() {
 
   async function createProject() {
     const referenceCount = referenceFiles.length + (form.sourceImageUrl.trim() ? 1 : 0);
-    if (referenceCount < 2) {
-      setError("유료 품질 기준을 위해 실제 상품 사진을 앞·뒤 또는 서로 다른 각도로 최소 2장 올려주세요.");
+    const minimumReferences = singlePhotoMode ? 1 : 2;
+    if (referenceCount < minimumReferences) {
+      setError(singlePhotoMode
+        ? "사진 한 장 쇼츠를 만들려면 실제 상품 이미지 1장을 올려주세요."
+        : "유료 품질 기준을 위해 실제 상품 사진을 앞·뒤 또는 서로 다른 각도로 최소 2장 올려주세요.");
       return;
     }
     setBusy("create");
@@ -198,6 +238,46 @@ export default function CreativeStudioPro() {
       await openProject(data.project);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "프로젝트 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function generatePackage() {
+    if (!selected) return;
+    setBusy("package");
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/commerce-package`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message);
+      await openProject(selected);
+      setMessage("한국형 대본·훅 3개·썸네일 문구·제목·설명·태그를 만들었습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "쇼핑 콘텐츠 패키지 생성 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function generateVoice() {
+    if (!selected) return;
+    setBusy("voice");
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch(`/api/creative-studio-pro/projects/${selected.id}/voice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message);
+      await openProject(selected);
+      setMessage("검수된 한국어 대본으로 AI 음성을 만들었습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "AI 음성 생성 실패");
     } finally {
       setBusy(null);
     }
@@ -324,9 +404,9 @@ export default function CreativeStudioPro() {
     <div className="creative-pro-stack shorts-quality-studio">
       <section className="panel creative-pro-hero">
         <div>
-          <div className="eyebrow">GY PREMIUM SHORTS · QUALITY GATE</div>
-          <h1>상품의 정체성을 잠그고 장면마다 이어지는 쇼츠 제작센터</h1>
-          <p>GPT Image 2가 4K 최종 이미지를 만들고 Dream Y가 형태·색상·재질·로고·손·장면 연속성·영상 안정성을 검사합니다. 치명적 오류가 하나라도 있으면 Runway로 보내지 않습니다.</p>
+          <div className="eyebrow">GY PHOTO COMMERCE · PREMIUM SHORTS</div>
+          <h1>사진 한 장부터 프리미엄 상품 쇼츠까지 한곳에서 완성</h1>
+          <p>상품 이미지를 넣으면 Dream Y가 한국형 대본·AI 음성·장면·썸네일 문구·제목·설명·태그를 만들고, 상품 형태를 검수한 장면만 영상으로 보냅니다.</p>
         </div>
         <div className="creative-pro-badge"><strong>{form.duration}초</strong><span>{form.duration / 5}개 장면</span></div>
       </section>
@@ -334,15 +414,24 @@ export default function CreativeStudioPro() {
       <div className="creative-pro-layout">
         <section className="panel creative-pro-form">
           <div className="section-title-row"><div><span className="eyebrow">STEP 1</span><h2>상품 사실자료와 영상 설정</h2></div><span className="quality-rule">통과 기준 {form.qualityThreshold}점</span></div>
+          <div className="photo-mode-grid">
+            <button type="button" className={singlePhotoMode ? "active" : ""} onClick={() => patch("sourceMode", "single-photo-commerce")}>
+              <strong>사진 한 장 쇼츠</strong><span>한 장의 상품은 그대로 보존하고 배경·조명·카메라 연출을 바꿉니다.</span>
+            </button>
+            <button type="button" className={!singlePhotoMode ? "active" : ""} onClick={() => patch("sourceMode", "premium-multi-photo")}>
+              <strong>프리미엄 2~4장</strong><span>앞·뒤·측면 자료로 실제 사용형 장면과 엄격한 상품 검수를 진행합니다.</span>
+            </button>
+          </div>
           <div className="form-grid">
             <label>작업명<input value={form.title} onChange={(event) => patch("title", event.target.value)} /></label>
             <label>상품명<input value={form.productName} onChange={(event) => patch("productName", event.target.value)} placeholder="예: USB-C 8포트 허브" /></label>
           </div>
           <label>상품 판매 페이지 주소<input value={form.productUrl} onChange={(event) => patch("productUrl", event.target.value)} placeholder="선택사항 · 사실 확인용 URL" /></label>
+          <label>제휴 링크<input value={form.affiliateUrl} onChange={(event) => patch("affiliateUrl", event.target.value)} placeholder="쿠팡·Temu에서 직접 만든 제휴 링크 · 선택사항" /></label>
           <label>검증된 상품 설명<textarea rows={4} value={form.productDescription} onChange={(event) => patch("productDescription", event.target.value)} placeholder="확인된 크기, 재질, 구성품, 기능만 입력하세요." /></label>
 
           <div className="reference-upload">
-            <div><b>실제 상품 사진 2~4장</b><span>앞·뒤·측면·실제 사용 장면을 권장합니다. PNG/JPG/WEBP, 장당 8MB 이하</span></div>
+            <div><b>{singlePhotoMode ? "실제 상품 사진 1장 이상" : "실제 상품 사진 2~4장"}</b><span>{singlePhotoMode ? "정면이 선명하고 글자·워터마크가 적은 사진을 권장합니다." : "앞·뒤·측면·실제 사용 장면을 권장합니다."} PNG/JPG/WEBP, 장당 8MB 이하</span></div>
             <label className="upload-button">사진 선택<input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => selectReferences(event.target.files)} /></label>
           </div>
           {previewUrls.length > 0 && <div className="reference-preview">{previewUrls.map((url, index) => (
@@ -352,7 +441,7 @@ export default function CreativeStudioPro() {
           <label>공개 상품 이미지 URL<input value={form.sourceImageUrl} onChange={(event) => patch("sourceImageUrl", event.target.value)} placeholder="파일 대신 사용할 때만 입력 · HTTPS" /></label>
           <label>공통 연출 지시<textarea rows={4} value={form.masterPrompt} onChange={(event) => patch("masterPrompt", event.target.value)} /></label>
 
-          <div className="choice-block"><b>영상 길이</b><div className="choice-row">{[20, 25, 30].map((seconds) => <button key={seconds} className={form.duration === seconds ? "selected" : ""} onClick={() => patch("duration", seconds)}>{seconds}초</button>)}</div></div>
+          <div className="choice-block"><b>영상 길이</b><div className="choice-row">{[15, 20, 25, 30].map((seconds) => <button key={seconds} className={form.duration === seconds ? "selected" : ""} onClick={() => patch("duration", seconds)}>{seconds}초</button>)}</div></div>
           <div className="form-grid">
             <label>스타일<select value={form.style} onChange={(event) => patch("style", event.target.value)}>{styles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label>화면 비율<select value={form.ratio} onChange={(event) => patch("ratio", event.target.value)}><option value="720:1280">9:16 쇼츠</option><option value="1280:720">16:9 유튜브</option></select></label>
@@ -360,6 +449,9 @@ export default function CreativeStudioPro() {
             <label>자동 재검수 한도<select value={form.maxImageRetries} onChange={(event) => patch("maxImageRetries", Number(event.target.value))}><option value={1}>1회 · 비용 절약</option><option value={2}>2회 · 권장</option></select></label>
             <label>자막<select value={form.subtitleMode} onChange={(event) => patch("subtitleMode", event.target.value)}><option value="korean">정확한 한국어 자막</option><option value="none">자막 없음</option></select></label>
             <label>음성<select value={form.voiceMode} onChange={(event) => patch("voiceMode", event.target.value)}><option value="female">여성 내레이션</option><option value="male">남성 내레이션</option><option value="music-only">배경음악만</option><option value="silent">무음</option></select></label>
+            <label>자막 스타일<select value={form.subtitleStyle} onChange={(event) => patch("subtitleStyle", event.target.value)}><option value="bold-pop">강조형 쇼핑 자막</option><option value="clean-card">깔끔한 카드 자막</option><option value="minimal">미니멀 자막</option></select></label>
+            <label>썸네일 스타일<select value={form.thumbnailStyle} onChange={(event) => patch("thumbnailStyle", event.target.value)}><option value="benefit-arrow">혜택 강조＋화살표</option><option value="problem-solution">문제 해결형</option><option value="clean-product">상품 중심형</option></select></label>
+            <label>효과음<select value={form.sfxMode} onChange={(event) => patch("sfxMode", event.target.value)}><option value="recommended">장면별 추천 효과음</option><option value="minimal">최소 효과음</option><option value="none">효과음 없음</option></select></label>
           </div>
           <div className="cost-note"><b>비용 안전장치</b><span>프로젝트 생성은 장면 기획만 합니다. 이미지 생성은 별도 버튼, Runway는 전체 이미지 통과 후 대표님이 직접 승인해야 시작됩니다.</span></div>
           <button className="button button-primary" onClick={createProject} disabled={Boolean(busy)}>{busy === "create" ? "상품 사진 업로드·기획 중..." : "장면 기획 프로젝트 만들기"}</button>
@@ -403,7 +495,43 @@ export default function CreativeStudioPro() {
         </div>}
         {qualityHolds > 0 && <p className="quality-hold-note">{qualityHolds}개 장면이 상품 일치도 기준에 미달해 보류되었습니다. Runway 비용은 사용되지 않았습니다.</p>}
 
-        <div className="export-bar"><div><b>CapCut 편집 자료</b><span>정확한 자막과 장면 순서를 바로 내려받습니다.</span></div><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=srt`}>SRT 자막</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=guide`}>CapCut 안내서</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export`}>편집 JSON</a></div>
+        <section className="commerce-package-panel">
+          <div className="commerce-package-head">
+            <div><span className="eyebrow">ONE IMAGE → SALES PACKAGE</span><h3>한국형 대본·음성·썸네일·게시정보</h3><p>사진을 다시 올릴 필요 없이 이 프로젝트의 상품 사실자료로 판매 패키지를 만듭니다.</p></div>
+            <div className="commerce-package-actions">
+              <button onClick={generatePackage} disabled={Boolean(busy)}>{busy === "package" ? "대본·메타데이터 생성 중..." : commercePackage ? "판매 패키지 다시 생성" : "판매 패키지 생성"}</button>
+              <button onClick={generateVoice} disabled={Boolean(busy) || !commercePackage}>{busy === "voice" ? "한국어 음성 생성 중..." : "AI 음성 만들기"}</button>
+            </div>
+          </div>
+          {commercePackage ? <div className="commerce-package-grid">
+            <article className="commerce-copy-card">
+              <span>추천 제목</span><h4>{commercePackage.title}</h4>
+              <b>첫 2초 훅 3개</b>
+              <ol>{commercePackage.hookOptions.map((hook) => <li key={hook}>{hook}</li>)}</ol>
+              <b>완성 대본</b><p>{commercePackage.voiceover}</p>
+              <b>CTA</b><p>{commercePackage.cta}</p>
+            </article>
+            <article className="commerce-thumbnail-card">
+              <span>정확한 글자로 만드는 썸네일 3안</span>
+              <div className="thumbnail-option-list">{commercePackage.thumbnailOptions.map((thumbnail, index) => <div key={`${thumbnail.headline}-${index}`} className={`thumbnail-option ${thumbnail.layout}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {productPreviewUrl && <img src={productPreviewUrl} alt="상품 썸네일 참고" />}
+                <div><strong>{thumbnail.headline}</strong><em>{thumbnail.accent}</em></div>
+                {thumbnail.layout === "benefit-arrow" && <i>➜</i>}
+              </div>)}</div>
+            </article>
+            <article className="commerce-meta-card">
+              <span>게시 설명·태그</span><p>{commercePackage.description}</p>
+              <div className="commerce-tags">{commercePackage.hashtags.map((tag) => <em key={tag}>{tag}</em>)}</div>
+              <b>제휴 고지</b><p>{commercePackage.disclosure}</p>
+              {commercePackage.verifiedClaims.length > 0 && <><b>확인된 표현</b><ul>{commercePackage.verifiedClaims.map((claim) => <li key={claim}>{claim}</li>)}</ul></>}
+              {commercePackage.cautions.length > 0 && <><b>게시 전 확인</b><ul>{commercePackage.cautions.map((caution) => <li key={caution}>{caution}</li>)}</ul></>}
+            </article>
+          </div> : <p className="empty-commerce-package">`판매 패키지 생성`을 누르면 영상 속 기능처럼 훅·대본·썸네일·설명·태그가 한 번에 만들어집니다.</p>}
+          {selected.settings?.voiceAudioUrl && <div className="voice-preview"><b>AI 한국어 음성 · {selected.settings.voiceName || "기본 음성"}</b><audio src={selected.settings.voiceAudioUrl} controls /></div>}
+        </section>
+
+        <div className="export-bar"><div><b>CapCut·게시 편집 자료</b><span>정확한 자막, 장면 순서와 판매 문구를 내려받습니다.</span></div><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=srt`}>SRT 자막</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=guide`}>CapCut 안내서</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export?format=package`}>게시 패키지</a><a href={`/api/creative-studio-pro/projects/${selected.id}/export`}>편집 JSON</a></div>
 
         <div className="scene-grid quality-scene-grid">{scenes.map((scene) => {
           const report = scene.quality_report;

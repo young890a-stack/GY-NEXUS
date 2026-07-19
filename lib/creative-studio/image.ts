@@ -127,7 +127,7 @@ export async function generateCreativeImage(input: ImageRequest) {
 
 export async function generateReferenceImageCandidates(input: ReferenceImageCandidateRequest) {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY가 없습니다.");
-  if (input.referenceImageUrls.length < 2) throw new Error("상품 참조 이미지가 최소 2장 필요합니다.");
+  if (input.referenceImageUrls.length < 1) throw new Error("상품 참조 이미지가 최소 1장 필요합니다.");
 
   const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
