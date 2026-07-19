@@ -2,7 +2,7 @@ services:
   - type: web
     name: gy-nexus-video-worker
     runtime: docker
-        plan: free
+    plan: free
     dockerfilePath: ./video-worker/Dockerfile
     dockerContext: ./video-worker
     healthCheckPath: /health
