@@ -122,7 +122,54 @@ async function generateDiscoveryKeywords(openai: OpenAI, query: string) {
     if (!chinesePlanIsValid) throw new Error("Invalid Simplified Chinese search plan");
     return { translatedProductName, keywords };
   } catch {
-    throw new Error("한국어를 중국어 간체 검색어로 변환하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    const directChinese = /[\p{Script=Han}]/u.test(query)
+      && !/[\p{Script=Hangul}]/u.test(query);
+
+    const translatedProductName = directChinese
+      ? query
+      : /손\s*선풍기|휴대용\s*선풍기/i.test(query)
+        ? "手持小风扇"
+        : /세탁조|세탁기.*청소|세탁.*클리너/i.test(query)
+          ? "洗衣机槽清洁剂"
+          : /키보드.*청소|키보드.*클리너/i.test(query)
+            ? "键盘清洁工具"
+            : /보조\s*배터리/i.test(query)
+              ? "充电宝"
+              : /무선.*이어폰|블루투스.*이어폰/i.test(query)
+                ? "无线耳机"
+                : /태블릿|갤럭시\s*탭/i.test(query)
+                  ? "平板电脑"
+                  : /USB.?C.*허브|USB.*허브/i.test(query)
+                    ? "USB-C扩展坞"
+                    : /가습기/i.test(query)
+                      ? "加湿器"
+                      : /제습기/i.test(query)
+                        ? "除湿机"
+                        : /청소기/i.test(query)
+                          ? "家用吸尘器"
+                          : /충전기|고속\s*충전/i.test(query)
+                            ? "快充充电器"
+                            : /케이블|충전선/i.test(query)
+                              ? "充电线"
+                              : "生活好物";
+
+    const expansions = [
+      [translatedProductName, "중국어 상품명", "product"],
+      [`${translatedProductName}测评`, "사용 후기·측정", "review"],
+      [`${translatedProductName}使用`, "사용 방법", "use-case"],
+      [`${translatedProductName}推荐`, "추천형 검색", "viral"],
+      [`${translatedProductName}对比`, "비교형 검색", "review"],
+      [`${translatedProductName}好物`, "생활용품 검색", "viral"],
+    ] as const;
+
+    return {
+      translatedProductName,
+      keywords: expansions.map(([simplifiedChinese, koreanMeaning, intent]) => ({
+        simplifiedChinese: simplifiedChinese.slice(0, 40),
+        koreanMeaning,
+        intent,
+      })),
+    };
   }
 }
 

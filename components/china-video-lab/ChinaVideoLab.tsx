@@ -53,6 +53,7 @@ type HealthService = {
 
 type HealthPayload = {
   success: boolean;
+  version?: string;
   services?: Record<string, HealthService>;
 };
 
@@ -512,7 +513,7 @@ export default function ChinaVideoLab() {
     <div className={styles.page}>
       <section className={styles.hero}>
         <div>
-          <span className={styles.eyebrow}>GY-NEXUS · CHINA VIDEO LAB</span>
+          <span className={styles.eyebrow}>GY-NEXUS · CHINA VIDEO LAB · V{health?.version || "3.3"}</span>
           <h1>중국 영상 연구소</h1>
           <p>
             쇼핑쇼츠센터와 분리된 독립 검색실입니다.
