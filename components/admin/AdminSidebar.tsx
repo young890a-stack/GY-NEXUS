@@ -35,6 +35,7 @@ const navigationGroups: Group[] = [
     ko: "CONTENT",
     en: "CONTENT",
     items: [
+      { icon: "rocket", ko: "GY Revenue Shorts OS", en: "GY Revenue Shorts OS", href: "/admin/revenue-shorts" },
       { icon: "box", ko: "상품 관리", en: "Product Management", href: "/admin/products" },
       { icon: "plus", ko: "상품 등록", en: "Add Product", href: "/admin/products/new" },
       { icon: "download", ko: "상품 자동 등록", en: "Product Import", href: "/admin/import" },
