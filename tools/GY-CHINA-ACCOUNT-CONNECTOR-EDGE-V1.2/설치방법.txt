@@ -1,0 +1,14 @@
+GY-NEXUS 중국 영상 연구소 Edge 연결 도우미 V1.2
+
+1. Edge 주소창에 edge://extensions 입력
+2. 기존 GY-NEXUS China Shorts Account Connector 제거
+3. 개발자 모드 켜기
+4. 압축 풀린 항목 로드
+5. 이 GY-CHINA-ACCOUNT-CONNECTOR-EDGE-V1.2 폴더 선택
+6. 도우인·샤오홍슈 로그인
+7. GY-NEXUS 새로고침
+8. 중국 영상 연구소 상태판에서 Edge 연결 '정상' 확인
+
+중요:
+- 중국 플랫폼의 로그인·보안 확인 화면이 나오면 완료한 뒤 다시 검색하세요.
+- 검색 카드 원본은 분석 참고용이며 최종 영상 사용 권리는 별도로 확인해야 합니다.
