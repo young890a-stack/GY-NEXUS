@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "쇼핑 쇼츠·광고 영상 제작 문의 · GY Labs",
+  description: "상품 판매를 위한 쇼핑 쇼츠, 광고 영상, 콘텐츠 운영 대행 상담",
+};
+
 export default async function SupportPage() {
   let email = "";
   try {
@@ -11,5 +16,25 @@ export default async function SupportPage() {
     const { data } = await supabase.auth.getUser();
     email = data.user?.email || "";
   } catch {}
-  return <div className="shell"><SiteHeader /><main className="container section"><section className="support-grid"><div><span className="eyebrow">GY SUPPORT</span><h1>무엇을 도와드릴까요?</h1><p>회원과 비회원 모두 문의할 수 있습니다. 접수된 문의는 GY Customer Center에서 관리됩니다.</p><div className="support-points"><article><b>서비스 문의</b><span>회원, 콘텐츠, 상품, 기능 사용 안내</span></article><article><b>오류 신고</b><span>문제가 발생한 화면과 상황을 알려주세요.</span></article><article><b>제휴 및 협업</b><span>GY와 함께할 제안을 남겨주세요.</span></article></div></div><section className="panel"><InquiryForm defaultEmail={email} /></section></section></main></div>;
+
+  return (
+    <div className="shell">
+      <SiteHeader />
+      <main className="container section" style={{ paddingTop: 140 }}>
+        <section className="support-grid">
+          <div>
+            <span className="eyebrow">GY SALES VIDEO AGENCY</span>
+            <h1>상품을 팔기 위한<br />영상을 의뢰하세요.</h1>
+            <p>상품 링크와 원하는 방향을 알려주시면 쇼핑 쇼츠, 광고 영상, 정확한 자막, 썸네일과 판매 문구까지 함께 설계합니다.</p>
+            <div className="support-points">
+              <article><b>쇼핑 쇼츠 제작</b><span>15~30초 영상·대본·자막·썸네일</span></article>
+              <article><b>상품 광고 영상</b><span>사용 장면과 판매 포인트 중심 광고 소재</span></article>
+              <article><b>콘텐츠 운영 대행</b><span>유튜브 쇼츠·인스타 릴스 반복 운영</span></article>
+            </div>
+          </div>
+          <section className="panel"><InquiryForm defaultEmail={email} /></section>
+        </section>
+      </main>
+    </div>
+  );
 }

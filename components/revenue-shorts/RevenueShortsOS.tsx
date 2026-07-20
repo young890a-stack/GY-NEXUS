@@ -315,6 +315,7 @@ export default function RevenueShortsOS() {
   const [serverProjectId, setServerProjectId] = useState("");
   const [renderStatus, setRenderStatus] = useState("");
   const [finalVideoUrl, setFinalVideoUrl] = useState("");
+  const [showcasePublished, setShowcasePublished] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -449,6 +450,7 @@ export default function RevenueShortsOS() {
     setDescription("");
     setServerProjectId("");
     setFinalVideoUrl("");
+    setShowcasePublished(false);
     setRenderStatus("");
     setStatus("새 프로젝트를 시작했습니다.");
     setError("");
@@ -837,6 +839,7 @@ export default function RevenueShortsOS() {
       const job = data.renderJob as { status?: string; output_url?: string; error_message?: string } | null;
       if (data.project?.final_video_url) {
         setFinalVideoUrl(String(data.project.final_video_url));
+        setShowcasePublished(data.project?.settings?.publicShowcase === true);
         setRenderStatus("완성");
         setStatus("최종 MP4가 완성되었습니다. 같은 화면에서 다운로드할 수 있습니다.");
         return;
@@ -980,6 +983,38 @@ export default function RevenueShortsOS() {
     }
   }
 
+
+  async function updateShowcaseVisibility(publish: boolean) {
+    if (!serverProjectId || !finalVideoUrl) {
+      setError("완성 MP4가 만들어진 뒤 사이트 공개를 설정할 수 있습니다.");
+      return;
+    }
+
+    setBusy("showcase");
+    setError("");
+
+    try {
+      const response = await fetch(`/api/revenue-shorts/projects/${serverProjectId}/showcase`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publish,
+          title: title.trim() || `${productName} 실제 사용 쇼핑 쇼츠`,
+          description: description.trim() || productDescription.trim(),
+          affiliateUrl: affiliateUrl.trim(),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || "사이트 영상 공개 설정 실패");
+      setShowcasePublished(Boolean(data.publicShowcase));
+      setStatus(data.message);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "사이트 영상 공개 설정 실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function downloadProjectPackage() {
     const packageData = {
       version: "GY Revenue Shorts OS 1.0.0",
@@ -1078,7 +1113,30 @@ export default function RevenueShortsOS() {
         <div className={styles.exportGrid}><button onClick={downloadProjectPackage}><strong>작업 패키지</strong><span>JSON · 대본 · SRT · 게시 문구</span></button><button onClick={() => downloadBlob(`${slug(productName)}.srt`, cuesToSrt(cues), "text/plain;charset=utf-8")}><strong>SRT 자막</strong><span>검수한 한국어 문장</span></button><button onClick={downloadThumbnail} disabled={!thumbnailReady}><strong>썸네일 PNG</strong><span>영상 장면 기반 9:16</span></button></div>
         <div className={styles.renderPanel}><div><span>REAL MP4 PIPELINE</span><h3>직접 촬영·허가 영상으로 최종 MP4 만들기</h3><p>영상 업로드 → 무료 수동 컷 계획 → 중국어 하단 안전 크롭 → 한국어 자막 → 음성·음악 → Render FFmpeg Worker → MP4</p></div><button className={styles.renderButton} onClick={() => void renderFinalMp4()} disabled={busy === "render"}>{busy === "render" ? renderStatus || "진행 중" : "최종 MP4 제작 시작"}</button></div>
         {serverProjectId && <div className={styles.renderStatus}><span>프로젝트 ID</span><code>{serverProjectId}</code><strong>{renderStatus}</strong></div>}
-        {finalVideoUrl && <a className={styles.downloadFinal} href={finalVideoUrl} download target="_blank" rel="noreferrer">완성 MP4 열기·다운로드</a>}
+        {finalVideoUrl && (
+          <div className={styles.publicationPanel}>
+            <video src={finalVideoUrl} controls playsInline preload="metadata" />
+            <div>
+              <span>PUBLIC SALES SHOWCASE</span>
+              <h3>내 사이트에서 완성 영상을 바로 재생합니다</h3>
+              <p>공개하면 메인 대표 영상, 영상 포트폴리오, 연결된 추천 상품 화면에 자동 노출됩니다. 공개하지 않은 내부 테스트 영상은 고객에게 보이지 않습니다.</p>
+              <div className={styles.publicationActions}>
+                <button
+                  className={styles.publishButton}
+                  onClick={() => void updateShowcaseVisibility(!showcasePublished)}
+                  disabled={busy === "showcase"}
+                >
+                  {busy === "showcase" ? "변경 중..." : showcasePublished ? "사이트 공개 해제" : "사이트 영상 전시장에 공개"}
+                </button>
+                <Link href="/showcase" target="_blank">공개 영상 페이지 보기</Link>
+                <a href={finalVideoUrl} download target="_blank" rel="noreferrer">완성 MP4 열기·다운로드</a>
+              </div>
+              <strong className={showcasePublished ? styles.published : styles.privateVideo}>
+                {showcasePublished ? "현재 고객에게 공개 중" : "현재 비공개 · 대표님만 확인 가능"}
+              </strong>
+            </div>
+          </div>
+        )}
       </section>
     );
   }
