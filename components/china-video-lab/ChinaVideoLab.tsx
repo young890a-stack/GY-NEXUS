@@ -283,44 +283,39 @@ export default function ChinaVideoLab() {
     setQuery(searchQuery);
     setSearching(true);
     setError("");
-    setNotice("AI 중국어 번역, 공개검색, Edge 로그인 검색을 각각 실행하고 있습니다.");
+    setNotice("AI 중국어 번역을 먼저 확인한 뒤 공개검색과 Edge 로그인 검색을 독립 실행합니다.");
     setSelectedIds([]);
     setResults([]);
     setTranslationState("searching");
     setPublicState("searching");
 
-    const translationPromise = requestJson(
-      "/api/china-video-lab/translate",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: searchQuery }),
-      },
-      30000,
-    );
-
-    const publicPromise = requestJson(
-      "/api/creative-studio-pro/china-search",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: searchQuery, platform, limit: 12 }),
-      },
-      65000,
-    );
-
     let connectorQuery = searchQuery;
+    let translatedKeywords: Keyword[] = [];
 
     try {
-      const translated = await translationPromise;
+      const translated = await requestJson(
+        "/api/china-video-lab/translate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: searchQuery }),
+        },
+        30000,
+      );
+
       const name = String(translated.translatedProductName || searchQuery).trim();
-      const nextKeywords = Array.isArray(translated.keywords)
+      translatedKeywords = Array.isArray(translated.keywords)
         ? translated.keywords as Keyword[]
         : [];
+
       setTranslatedName(name);
-      setKeywords(nextKeywords);
-      setTranslationState("ready");
+      setKeywords(translatedKeywords);
+      setTranslationState(translated.warning ? "warning" : "ready");
       connectorQuery = name || searchQuery;
+
+      if (translated.warning) {
+        setNotice(`AI 번역 보완 모드: ${String(translated.warning)} Edge 검색은 계속 실행합니다.`);
+      }
     } catch (cause) {
       setTranslationState("warning");
       setTranslatedName(searchQuery);
@@ -332,31 +327,53 @@ export default function ChinaVideoLab() {
       );
     }
 
+    // Edge 로그인 검색은 공개 웹 검색과 완전히 독립적으로 시작합니다.
     requestConnectorSearch(connectorQuery);
 
     try {
-      const publicData = await publicPromise;
+      const publicData = await requestJson(
+        "/api/china-video-lab/public-search",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: searchQuery,
+            translatedProductName: connectorQuery,
+            keywords: translatedKeywords,
+            platform,
+            limit: 12,
+          }),
+        },
+        65000,
+      );
+
       const publicResults = Array.isArray(publicData.results)
         ? publicData.results as SearchResult[]
         : [];
-      const publicKeywords = Array.isArray(publicData.keywords)
-        ? publicData.keywords as Keyword[]
-        : [];
 
       setResults((current) => uniqueResults([...current, ...publicResults]));
-      if (publicKeywords.length) setKeywords(publicKeywords);
-      if (publicData.translatedProductName) {
-        setTranslatedName(String(publicData.translatedProductName));
-      }
       setPublicState(publicResults.length ? "ready" : "warning");
-      setNotice(String(publicData.message || "공개검색을 완료했습니다. Edge 결과는 도착하는 즉시 합쳐집니다."));
+      setNotice((current) => {
+        const publicMessage = String(
+          publicData.message
+          || (publicResults.length
+            ? `공개검색 영상 카드 ${publicResults.length}개를 찾았습니다.`
+            : "공개 웹 결과는 없지만 Edge 로그인 검색은 계속됩니다."),
+        );
+        return current.includes("Edge 로그인 화면에서")
+          ? `${current} ${publicMessage}`
+          : publicMessage;
+      });
     } catch (cause) {
       setPublicState("warning");
-      setNotice(
-        cause instanceof Error
-          ? `공개검색: ${cause.message} Edge 로그인 검색은 별도로 계속됩니다.`
-          : "공개검색은 실패했지만 Edge 로그인 검색은 별도로 계속됩니다.",
-      );
+      setNotice((current) => {
+        const publicMessage = cause instanceof Error
+          ? `공개검색 확인 필요: ${cause.message}`
+          : "공개검색은 응답하지 않았습니다.";
+        return current.includes("Edge 로그인 화면에서")
+          ? `${current} ${publicMessage}`
+          : `${publicMessage} Edge 로그인 검색은 별도로 계속됩니다.`;
+      });
     } finally {
       setSearching(false);
     }
@@ -535,7 +552,7 @@ export default function ChinaVideoLab() {
           <div>
             <span>STEP 1</span>
             <h2>상품 영상 찾기</h2>
-            <p>검색 버튼 한 번으로 번역·공개검색·로그인 검색을 따로 실행하고 결과를 한 화면에 합칩니다.</p>
+            <p>번역은 한 번만 실행하고, 그 중국어 결과로 공개검색과 Edge 로그인 검색을 각각 실행합니다.</p>
           </div>
           <strong>{results.length}<small>개 결과</small></strong>
         </div>
@@ -744,7 +761,7 @@ export default function ChinaVideoLab() {
           <b>검색 결과가 없을 때 화면에서 원인을 바로 확인합니다.</b>
         </div>
         <ul>
-          <li>AI 번역과 공개 웹 검색은 서로 실패해도 다른 경로를 막지 않습니다.</li>
+          <li>AI 번역 결과를 공개검색에 그대로 전달하므로 기존 검색 API의 중복 번역 오류가 발생하지 않습니다.</li>
           <li>Edge 연결 검색은 공개검색 완료를 기다리지 않고 독립 실행됩니다.</li>
           <li>도우인·샤오홍슈 로그인 또는 보안 확인이 필요하면 원문 탭을 열어 완료합니다.</li>
           <li>영상 카드는 구조 분석용이며 최종 합성에는 권리를 확인한 파일만 사용됩니다.</li>

@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 export async function GET() {
   return NextResponse.json({
     success: true,
+    version: "3.2",
     checkedAt: new Date().toISOString(),
     services: {
       server: { configured: true, label: "GY-NEXUS 서버" },
