@@ -1,10 +1,10 @@
-import RevenueShortsOS from "@/components/revenue-shorts/RevenueShortsOS";
+import RevenueShortsCommandCenter from "@/components/revenue-shorts/RevenueShortsCommandCenter";
 
 export const metadata = {
-  title: "GY Revenue Shorts OS · GY-NEXUS",
-  description: "상품 하나에서 소스, 편집, 대본, 자막, 썸네일, 수익화, MP4 출력까지 이어지는 통합 쇼츠 작업실",
+  title: "GY 쇼핑 쇼츠 통합 제작실 · GY-NEXUS",
+  description: "제휴링크 자동 상품수집, 중국 인기영상 시청·선택, AI 짜집기, 최종 MP4를 한 화면에서 진행하는 통합 제작실",
 };
 
 export default function RevenueShortsPage() {
-  return <RevenueShortsOS />;
+  return <RevenueShortsCommandCenter />;
 }
