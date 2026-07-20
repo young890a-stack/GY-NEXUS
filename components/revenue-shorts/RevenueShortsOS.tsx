@@ -25,6 +25,7 @@ type LocalSource = {
   useInFinal: boolean;
   thumbnailUrl: string;
   needsReconnect?: boolean;
+  researchUrl?: string;
 };
 
 type ScriptCue = {
@@ -43,6 +44,15 @@ type SearchResult = {
   thumbnailUrl?: string;
   popularityLabel?: string;
   sourceMode?: string;
+  directVideoUrl?: string;
+};
+
+type SourcePreviewState = {
+  item: SearchResult;
+  loading: boolean;
+  mode: "direct-video" | "official-embed" | "platform-player" | "error";
+  embedUrl: string;
+  message: string;
 };
 
 type Health = {
@@ -295,6 +305,10 @@ export default function RevenueShortsOS() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceTitle, setSourceTitle] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [selectedResearchIds, setSelectedResearchIds] = useState<string[]>([]);
+  const [sourcePreview, setSourcePreview] = useState<SourcePreviewState | null>(null);
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [aiMixRequested, setAiMixRequested] = useState(false);
   const [cues, setCues] = useState<ScriptCue[]>([]);
   const [subtitleStyle, setSubtitleStyle] = useState<"bold-pop" | "minimal">("bold-pop");
   const [subtitleCleanupMode, setSubtitleCleanupMode] = useState<"safe-bottom-crop" | "keep-licensed">("safe-bottom-crop");
@@ -319,6 +333,22 @@ export default function RevenueShortsOS() {
   const [hydrated, setHydrated] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  const selectedResearchResults = useMemo(
+    () => searchResults.filter((item) => selectedResearchIds.includes(item.id)),
+    [searchResults, selectedResearchIds],
+  );
+  const selectedResearchUrls = useMemo(
+    () => new Set(selectedResearchResults.map((item) => item.url)),
+    [selectedResearchResults],
+  );
+  const linkedResearchSources = useMemo(
+    () => sources.filter(
+      (item) => item.kind === "local-video"
+        && Boolean(item.researchUrl)
+        && selectedResearchUrls.has(item.researchUrl || ""),
+    ),
+    [sources, selectedResearchUrls],
+  );
   const finalSources = useMemo(() => sources.filter((item) => item.kind === "local-video" && item.useInFinal), [sources]);
   const totalTrimmedDuration = useMemo(() => finalSources.reduce((sum, item) => sum + Math.max(.1, item.trimEnd - item.trimStart), 0), [finalSources]);
   const commercePackage = useMemo(() => buildCommercePackage({ productName, affiliateUrl, cues, title, description, hashtags, thumbnailHeadline }), [productName, affiliateUrl, cues, title, description, hashtags, thumbnailHeadline]);
@@ -408,6 +438,7 @@ export default function RevenueShortsOS() {
           thumbnailUrl: String(row.thumbnailUrl || ""),
           popularityLabel: String(row.popularityLabel || "Edge 로그인 검색"),
           sourceMode: "browser-account",
+          directVideoUrl: String(row.directVideoUrl || row.videoUrl || row.playUrl || ""),
         };
       }).filter((item) => item.url.startsWith("https://"));
       if (normalized.length) {
@@ -442,6 +473,10 @@ export default function RevenueShortsOS() {
     setChineseKeywords([]);
     setSources([]);
     setSearchResults([]);
+    setSelectedResearchIds([]);
+    setSourcePreview(null);
+    setRightsConfirmed(false);
+    setAiMixRequested(false);
     setCues([]);
     setVoiceFile(null);
     setMusicFile(null);
@@ -542,6 +577,178 @@ export default function RevenueShortsOS() {
     } finally {
       setBusy(null);
     }
+  }
+
+
+  async function previewResearchResult(item: SearchResult) {
+    setSourcePreview({
+      item,
+      loading: true,
+      mode: item.directVideoUrl ? "direct-video" : "platform-player",
+      embedUrl: item.directVideoUrl || "",
+      message: "영상 재생 방법을 확인하고 있습니다.",
+    });
+
+    if (item.directVideoUrl?.startsWith("https://")) {
+      setSourcePreview({
+        item,
+        loading: false,
+        mode: "direct-video",
+        embedUrl: item.directVideoUrl,
+        message: "Edge 연결기가 전달한 재생 주소로 사이트 안에서 재생합니다.",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/creative-studio-pro/china-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: item.url }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "미리보기 준비 실패");
+      }
+
+      setSourcePreview({
+        item,
+        loading: false,
+        mode: data.mode === "official-embed" ? "official-embed" : "platform-player",
+        embedUrl: String(data.embedUrl || ""),
+        message: String(data.message || "원문 플레이어에서 확인할 수 있습니다."),
+      });
+    } catch (cause) {
+      setSourcePreview({
+        item,
+        loading: false,
+        mode: "error",
+        embedUrl: "",
+        message: cause instanceof Error ? cause.message : "영상 미리보기 준비 실패",
+      });
+    }
+  }
+
+  function toggleResearchSelection(item: SearchResult) {
+    setSelectedResearchIds((current) => {
+      if (current.includes(item.id)) {
+        return current.filter((id) => id !== item.id);
+      }
+      if (current.length >= 3) {
+        setError("AI 짜집기에 사용할 영상은 최대 3개까지 선택할 수 있습니다.");
+        return current;
+      }
+      setError("");
+      return [...current, item.id];
+    });
+  }
+
+  async function connectSelectedResearchFiles(fileList: FileList | null) {
+    const files = Array.from(fileList || []);
+
+    if (selectedResearchResults.length < 2 || selectedResearchResults.length > 3) {
+      setError("먼저 시청한 영상 중 마음에 드는 2~3개를 선택해주세요.");
+      return;
+    }
+    if (!rightsConfirmed) {
+      setError("직접 촬영·판매자 제공·제휴 제공·사용 허가 영상임을 먼저 확인해주세요.");
+      return;
+    }
+    if (files.length !== selectedResearchResults.length) {
+      setError(`선택한 영상 ${selectedResearchResults.length}개와 같은 수의 MP4·MOV 파일을 순서대로 선택해주세요.`);
+      return;
+    }
+
+    setBusy("research-files");
+    setError("");
+
+    try {
+      const added: LocalSource[] = [];
+
+      for (const [index, file] of files.entries()) {
+        if (!["video/mp4", "video/webm", "video/quicktime"].includes(file.type)) {
+          throw new Error(`${file.name}: MP4, WEBM, MOV 형식만 사용할 수 있습니다.`);
+        }
+        if (file.size > 500 * 1024 * 1024) {
+          throw new Error(`${file.name}: 500MB 이하 영상만 사용할 수 있습니다.`);
+        }
+
+        const duration = await getVideoDuration(file);
+        const result = selectedResearchResults[index];
+
+        added.push({
+          id: uid("selected-source"),
+          kind: "local-video",
+          platform: result.platform,
+          title: result.title || file.name.replace(/\.[^.]+$/, ""),
+          url: result.url,
+          researchUrl: result.url,
+          previewUrl: URL.createObjectURL(file),
+          file,
+          duration,
+          trimStart: 0,
+          trimEnd: duration,
+          rightsStatus: "permission-confirmed",
+          useInFinal: true,
+          thumbnailUrl: result.thumbnailUrl || "",
+          needsReconnect: false,
+        });
+      }
+
+      setSources((current) => {
+        const replaceUrls = new Set(selectedResearchResults.map((item) => item.url));
+
+        current
+          .filter((item) => item.researchUrl && replaceUrls.has(item.researchUrl))
+          .forEach((item) => {
+            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+          });
+
+        const preserved = current.filter(
+          (item) => !(item.researchUrl && replaceUrls.has(item.researchUrl)),
+        );
+
+        return [...added, ...preserved].slice(0, 20);
+      });
+
+      setAiMixRequested(true);
+      setStatus(`${added.length}개 선택 영상 파일을 연결했습니다. 이제 AI가 훅·사용 장면·디테일·CTA 순서로 재구성할 수 있습니다.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "선택 영상 파일을 연결하지 못했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function prepareAiMixFromSelected() {
+    if (selectedResearchResults.length < 2 || selectedResearchResults.length > 3) {
+      setError("영상 2~3개를 선택해야 AI 짜집기를 시작할 수 있습니다.");
+      return;
+    }
+    if (linkedResearchSources.length !== selectedResearchResults.length) {
+      setError("선택한 각 영상에 해당하는 사용 허가 MP4·MOV 파일을 먼저 연결해주세요.");
+      return;
+    }
+
+    const selectedOrder = new Map(
+      selectedResearchResults.map((item, index) => [item.url, index]),
+    );
+
+    setSources((current) => [...current].sort((a, b) => {
+      const aOrder = a.researchUrl && selectedOrder.has(a.researchUrl)
+        ? selectedOrder.get(a.researchUrl)!
+        : 99;
+      const bOrder = b.researchUrl && selectedOrder.has(b.researchUrl)
+        ? selectedOrder.get(b.researchUrl)!
+        : 99;
+      return aOrder - bOrder;
+    }));
+
+    setAiMixRequested(true);
+    setCurrentStep(3);
+    setStatus(`선택한 ${selectedResearchResults.length}개 영상으로 AI 짜집기 모드를 준비했습니다. STEP 03에서 컷 구간을 확인한 뒤 최종 출력하면 AI 장면 순서를 우선 사용합니다.`);
+    setError("");
   }
 
   async function selectVideos(fileList: FileList | null) {
@@ -918,10 +1125,28 @@ export default function RevenueShortsOS() {
 
       setRenderStatus("영상 업로드");
       setStatus(`${usable.length}개 직접 촬영·허가 영상을 Supabase에 올리고 있습니다.`);
-      const uploaded = [] as Array<{ source: LocalSource; url: string; id: string }>;
+      const uploaded = [] as Array<{
+        source: LocalSource;
+        url: string;
+        id: string;
+        analysisFrameUrls: string[];
+      }>;
+
       for (const [index, source] of usable.entries()) {
         const url = await uploadVideoFile(source.file!);
-        uploaded.push({ source, url, id: `revenue-source-${Date.now()}-${index}` });
+        const sampleAt = Math.min(
+          Math.max(source.trimStart + .4, source.duration * .2),
+          Math.max(.1, source.trimEnd - .1),
+        );
+        const analysisFrame = await frameFileFromVideo(source.file!, sampleAt);
+        const analysisFrameUrl = await uploadReferenceFrame(analysisFrame);
+
+        uploaded.push({
+          source,
+          url,
+          id: `revenue-source-${Date.now()}-${index}`,
+          analysisFrameUrls: [analysisFrameUrl],
+        });
       }
 
       setRenderStatus("음성·음악 업로드");
@@ -930,17 +1155,21 @@ export default function RevenueShortsOS() {
         uploadAudio(musicFile, "music"),
       ]);
 
-      const mediaReferences = uploaded.map(({ source, url, id }) => ({
+      const mediaReferences = uploaded.map(({ source, url, id, analysisFrameUrls }) => ({
         id,
-        platform: "owned",
+        platform: source.platform === "douyin" || source.platform === "xiaohongshu"
+          ? source.platform
+          : "owned",
         url,
         title: source.title,
         assetKind: "video-file",
         rightsStatus: source.rightsStatus === "unverified" ? "owned" : source.rightsStatus,
         useInFinal: true,
         includeInMixAnalysis: true,
-        notes: "GY Revenue Shorts OS에서 직접 촬영 또는 사용 허가를 확인한 영상",
-        analysisFrameUrls: [],
+        notes: source.researchUrl
+          ? `대표가 소스 시청관에서 선택한 참고 영상과 연결된 사용 허가 파일: ${source.researchUrl}`
+          : "GY Revenue Shorts OS에서 직접 촬영 또는 사용 허가를 확인한 영상",
+        analysisFrameUrls,
         selectedKeywords: chineseKeywords.slice(0, 6),
         durationSeconds: source.duration,
         trimStartSecond: source.trimStart,
@@ -949,7 +1178,73 @@ export default function RevenueShortsOS() {
       }));
       const cuts = splitCuts(uploaded.map(({ source, id }) => ({ id, trimStart: source.trimStart, trimEnd: source.trimEnd })));
 
-      setRenderStatus("무료 컷 계획 저장");
+      let aiPlanApplied = false;
+
+      if (aiMixRequested && usable.length >= 2) {
+        setRenderStatus("AI 장면 분석·짜집기 설계");
+        setStatus("선택한 2~3개 영상의 대표 장면을 비교해 새로운 한국형 판매 순서를 설계하고 있습니다.");
+
+        try {
+          const referenceResponse = await fetch(`/api/creative-studio-pro/projects/${projectId}/media-references`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ references: mediaReferences }),
+          });
+          const referenceData = await referenceResponse.json();
+          if (!referenceResponse.ok || !referenceData.success) {
+            throw new Error(referenceData.message || "선택 소스 저장 실패");
+          }
+
+          const settingsResponse = await fetch(`/api/creative-studio-pro/projects/${projectId}/editor-settings`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              playbackSpeed,
+              subtitleCleanupMode,
+              sourceAudioMode: voiceAudioUrl ? "mute-korean-tts" : "mute",
+              mixStrategy: "licensed-only",
+            }),
+          });
+          const settingsData = await settingsResponse.json();
+          if (!settingsResponse.ok || !settingsData.success) {
+            throw new Error(settingsData.message || "AI 편집 설정 저장 실패");
+          }
+
+          const mixResponse = await fetch(`/api/creative-studio-pro/projects/${projectId}/source-mix`, {
+            method: "POST",
+          });
+          const mixData = await mixResponse.json();
+          if (!mixResponse.ok || !mixData.success) {
+            throw new Error(mixData.message || "AI 짜집기 설계 실패");
+          }
+
+          const finalizeResponse = await fetch(`/api/revenue-shorts/projects/${projectId}/finalize-ai-plan`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              commercePackage: renderCommercePackage,
+              voiceAudioUrl,
+              customMusicUrl,
+              musicVolume,
+              subtitleStyle,
+              subtitleCleanupMode,
+              playbackSpeed,
+            }),
+          });
+          const finalizeData = await finalizeResponse.json();
+          if (!finalizeResponse.ok || !finalizeData.success) {
+            throw new Error(finalizeData.message || "AI 짜집기 최종 승인 실패");
+          }
+
+          aiPlanApplied = true;
+          setStatus(mixData.message || "AI 짜집기 설계를 적용했습니다.");
+        } catch (aiError) {
+          setStatus(`AI 짜집기 응답 불가 → 무료 자동 컷 설계로 계속합니다. ${aiError instanceof Error ? aiError.message : ""}`.trim());
+        }
+      }
+
+      if (!aiPlanApplied) {
+          setRenderStatus("무료 자동 컷 계획 저장");
       const planResponse = await fetch(`/api/revenue-shorts/projects/${projectId}/manual-plan`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -968,6 +1263,8 @@ export default function RevenueShortsOS() {
       });
       const planData = await planResponse.json();
       if (!planResponse.ok || !planData.success) throw new Error(planData.message || "무료 렌더 계획 저장 실패");
+
+      }
 
       setRenderStatus("Render Worker 요청");
       const renderResponse = await fetch(`/api/creative-studio-pro/projects/${projectId}/render`, { method: "POST" });
@@ -1063,7 +1360,157 @@ export default function RevenueShortsOS() {
           <label className={styles.uploadZone}><input type="file" accept="video/mp4,video/webm,video/quicktime" multiple onChange={(event) => void selectVideos(event.target.files)} /><strong>직접 촬영·사용 허가 영상 올리기</strong><span>MP4 · WEBM · MOV / 파일당 최대 500MB / 여러 개 선택 가능</span></label>
         </div>
         <div className={styles.urlAdder}><input value={sourceTitle} onChange={(event) => setSourceTitle(event.target.value)} placeholder="참고 영상 제목" /><input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="도우인·샤오홍슈 또는 참고 URL" /><button onClick={() => addResearchLink()}>링크 담기</button></div>
-        {searchResults.length > 0 && <div className={styles.resultGrid}>{searchResults.map((item) => <article className={styles.resultCard} key={item.url}>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <div className={styles.resultPlaceholder}>{item.platform === "douyin" ? "抖音" : "小红书"}</div>}<div><small>{item.platform} · {item.popularityLabel || "참고 결과"}</small><strong>{item.title}</strong><div className={styles.miniActions}><a href={item.url} target="_blank" rel="noreferrer">원문</a><button onClick={() => addResearchLink(item)}>소스함</button></div></div></article>)}</div>}
+        {searchResults.length > 0 && (
+          <div className={styles.sourceTheater}>
+            <div className={styles.theaterStage}>
+              {sourcePreview ? (
+                <>
+                  <div className={styles.theaterPlayer}>
+                    {sourcePreview.loading ? (
+                      <div className={styles.theaterEmpty}>
+                        <strong>영상 불러오는 중</strong>
+                        <span>{sourcePreview.item.title}</span>
+                      </div>
+                    ) : sourcePreview.mode === "direct-video" ? (
+                      <video src={sourcePreview.embedUrl} controls autoPlay muted playsInline />
+                    ) : sourcePreview.mode === "official-embed" ? (
+                      <iframe
+                        src={sourcePreview.embedUrl}
+                        title={sourcePreview.item.title}
+                        allow="autoplay; fullscreen"
+                      />
+                    ) : (
+                      <div className={styles.theaterFallback}>
+                        {sourcePreview.item.thumbnailUrl
+                          ? <img src={sourcePreview.item.thumbnailUrl} alt="" />
+                          : <strong>{sourcePreview.item.platform === "douyin" ? "抖音" : "小红书"}</strong>}
+                        <div>
+                          <span>{sourcePreview.message}</span>
+                          <a href={sourcePreview.item.url} target="_blank" rel="noreferrer">
+                            Edge 원문 플레이어에서 재생
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className={styles.theaterCaption}>
+                    <div>
+                      <small>{sourcePreview.item.platform} · SOURCE PREVIEW</small>
+                      <strong>{sourcePreview.item.title}</strong>
+                      <p>{sourcePreview.message}</p>
+                    </div>
+                    <button
+                      className={selectedResearchIds.includes(sourcePreview.item.id)
+                        ? styles.selectedButton
+                        : styles.selectButton}
+                      onClick={() => toggleResearchSelection(sourcePreview.item)}
+                    >
+                      {selectedResearchIds.includes(sourcePreview.item.id)
+                        ? "선택됨 ✓"
+                        : "이 영상 선택"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className={styles.theaterEmpty}>
+                  <span>GY SOURCE THEATER</span>
+                  <strong>카드의 ‘사이트에서 보기’를 눌러 영상을 비교하세요.</strong>
+                  <p>마음에 드는 영상 2~3개를 선택하면 실제 MP4 파일과 연결해 AI 짜집기 단계로 넘어갑니다.</p>
+                </div>
+              )}
+            </div>
+
+            <aside className={styles.theaterQueue}>
+              <div className={styles.queueHead}>
+                <strong>검색 영상</strong>
+                <span>{selectedResearchIds.length}/3 선택</span>
+              </div>
+              <div className={styles.queueList}>
+                {searchResults.map((item) => {
+                  const selectedItem = selectedResearchIds.includes(item.id);
+                  return (
+                    <article
+                      className={selectedItem
+                        ? `${styles.queueCard} ${styles.queueSelected}`
+                        : styles.queueCard}
+                      key={item.url}
+                    >
+                      <button
+                        className={styles.queuePreview}
+                        onClick={() => void previewResearchResult(item)}
+                      >
+                        {item.thumbnailUrl
+                          ? <img src={item.thumbnailUrl} alt="" />
+                          : <span>{item.platform === "douyin" ? "抖音" : "小红书"}</span>}
+                      </button>
+                      <div>
+                        <small>{item.platform} · {item.popularityLabel || "참고 결과"}</small>
+                        <strong>{item.title}</strong>
+                        <div className={styles.queueActions}>
+                          <button onClick={() => void previewResearchResult(item)}>
+                            사이트에서 보기
+                          </button>
+                          <button onClick={() => toggleResearchSelection(item)}>
+                            {selectedItem ? "선택 해제" : "선택"}
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </aside>
+          </div>
+        )}
+
+        {selectedResearchResults.length > 0 && (
+          <div className={styles.mixSelectionPanel}>
+            <div>
+              <span>AI MIX SELECTION</span>
+              <h3>마음에 드는 영상 {selectedResearchResults.length}개 선택</h3>
+              <p>플랫폼 링크는 시청·비교용입니다. 실제 짜집기는 직접 촬영, 판매자·제휴사 제공 또는 사용 허가가 확인된 MP4·MOV 파일을 같은 순서로 연결합니다.</p>
+            </div>
+            <div className={styles.selectedChips}>
+              {selectedResearchResults.map((item, index) => (
+                <span key={item.id}>{index + 1}. {item.title}</span>
+              ))}
+            </div>
+            <label className={styles.rightsConfirm}>
+              <input
+                type="checkbox"
+                checked={rightsConfirmed}
+                onChange={(event) => setRightsConfirmed(event.target.checked)}
+              />
+              선택한 영상 파일을 최종 광고에 사용할 권리가 있음을 확인합니다.
+            </label>
+            <label className={
+              rightsConfirmed && selectedResearchResults.length >= 2
+                ? styles.mixFileButton
+                : styles.mixFileButtonDisabled
+            }>
+              <input
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime"
+                multiple
+                disabled={!rightsConfirmed || selectedResearchResults.length < 2}
+                onChange={(event) => void connectSelectedResearchFiles(event.target.files)}
+              />
+              선택한 {selectedResearchResults.length}개 영상 파일 연결
+            </label>
+            <div className={styles.mixReadiness}>
+              <span>연결 완료 {linkedResearchSources.length}/{selectedResearchResults.length}</span>
+              <button
+                onClick={prepareAiMixFromSelected}
+                disabled={
+                  selectedResearchResults.length < 2
+                  || linkedResearchSources.length !== selectedResearchResults.length
+                }
+              >
+                선택한 2~3개로 AI 짜집기 준비
+              </button>
+            </div>
+          </div>
+        )}
         <div className={styles.sourceList}>{sources.map((source, index) => <article className={`${styles.sourceCard} ${source.kind === "local-video" ? styles.finalSource : styles.researchSource}`} key={source.id}>
           <div className={styles.sourceMedia}>{source.previewUrl ? <video src={source.previewUrl} controls muted playsInline /> : source.thumbnailUrl ? <img src={source.thumbnailUrl} alt="" /> : <div>{source.needsReconnect ? "파일 재연결 필요" : "연구 링크"}</div>}</div>
           <div className={styles.sourceBody}><div className={styles.sourceMeta}><span>{index + 1}</span><small>{source.kind === "local-video" ? "최종 합성 가능" : "연구 전용"}</small></div><strong>{source.title}</strong><p>{source.kind === "local-video" ? `${source.duration.toFixed(1)}초 · ${source.rightsStatus}` : "원본 영상을 복제하지 않고 훅·촬영각도·판매 구조만 참고"}</p>
