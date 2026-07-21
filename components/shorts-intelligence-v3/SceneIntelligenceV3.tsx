@@ -115,7 +115,7 @@ export default function SceneIntelligenceV3() {
   return <main className={styles.page}>
     <header className={styles.hero}>
       <div><span>GY-NEXUS V3-3</span><h1>Gemini Multimodal Scene Intelligence</h1><p>상위 30개 권리 확인 영상의 원본 저장, 대표 프레임 추출, 타임스탬프 장면 분석과 한국형 재창작 설계를 관리합니다.</p></div>
-      <div className={styles.topActions}><a href="/admin/shorts-intelligence-v3">V3 대시보드</a><button onClick={() => void loadStatus()} disabled={!runId || busy}>새로고침</button></div>
+      <div className={styles.topActions}><a href="/admin/shorts-intelligence-v3">V3 대시보드</a><a href="/admin/shorts-intelligence-v3/production">V3-4 제작 엔진</a><button onClick={() => void loadStatus()} disabled={!runId || busy}>새로고침</button></div>
     </header>
     {message && <div className={styles.message}>{message}</div>}
 
