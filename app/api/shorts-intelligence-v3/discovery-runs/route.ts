@@ -35,6 +35,9 @@ export async function POST(request: Request) {
       keyword_plan: Array.isArray(body.keywordPlan) ? body.keywordPlan.slice(0, 20) : [],
       target_candidate_count: targetCandidateCount,
       source_mode: "account-assisted",
+      gemini_provider: String(body.geminiProvider || "").trim() || null,
+      gemini_model: String(body.geminiModel || "").trim() || null,
+      collector_status: "idle",
       status: "collecting",
       started_at: new Date().toISOString(),
     }).select("*").single();
