@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import GyIcon from "./GyIcon";
 import { useAdminLocale } from "./AdminLocale";
@@ -35,6 +36,7 @@ const navigationGroups: Group[] = [
     ko: "CONTENT",
     en: "CONTENT",
     items: [
+      { icon: "zap", ko: "모바일 원클릭 쇼츠", en: "Mobile One-click Shorts", href: "/admin/mobile-auto-shorts" },
       { icon: "rocket", ko: "GY Revenue Shorts OS", en: "GY Revenue Shorts OS", href: "/admin/revenue-shorts" },
       { icon: "box", ko: "상품 관리", en: "Product Management", href: "/admin/products" },
       { icon: "plus", ko: "상품 등록", en: "Add Product", href: "/admin/products/new" },
@@ -85,18 +87,33 @@ function isActivePath(pathname: string, href: string) {
 export default function AdminSidebar() {
   const pathname = usePathname();
   const { locale, setLocale } = useAdminLocale();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => setMobileOpen(false), [pathname]);
 
   return (
-    <aside className="sidebar premium-sidebar">
+    <aside className={`sidebar premium-sidebar ${mobileOpen ? "mobile-open" : ""}`}>
       <div className="sidebar-ambient" aria-hidden="true" />
       <div className="sidebar-inner">
-        <Link href="/admin" className="brand admin-brand premium-brand">
-          <span className="brand-mark premium-brand-mark"><span>GY</span><i /></span>
-          <span className="brand-copy">
-            <strong>GY COMPANY OS</strong>
-            <small>AI COMPANY OS · 2.0</small>
-          </span>
-        </Link>
+        <div className="mobile-sidebar-head">
+          <Link href="/admin" className="brand admin-brand premium-brand">
+            <span className="brand-mark premium-brand-mark"><span>GY</span><i /></span>
+            <span className="brand-copy">
+              <strong>GY COMPANY OS</strong>
+              <small>AI COMPANY OS · 2.0</small>
+            </span>
+          </Link>
+          <button
+            type="button"
+            className="mobile-menu-toggle"
+            aria-expanded={mobileOpen}
+            aria-controls="gy-admin-navigation"
+            onClick={() => setMobileOpen((open) => !open)}
+          >
+            <span aria-hidden="true">{mobileOpen ? "×" : "☰"}</span>
+            <b>{mobileOpen ? "닫기" : "전체 메뉴"}</b>
+          </button>
+        </div>
 
         <div className="locale-switcher" role="group" aria-label="Language selector">
           <button type="button" className={locale === "ko" ? "active" : ""} onClick={() => setLocale("ko")}>KR</button>
@@ -104,7 +121,7 @@ export default function AdminSidebar() {
           <span aria-hidden="true" />
         </div>
 
-        <nav className="side-nav premium-nav" aria-label={locale === "ko" ? "관리자 메뉴" : "Admin navigation"}>
+        <nav id="gy-admin-navigation" className="side-nav premium-nav" aria-label={locale === "ko" ? "관리자 메뉴" : "Admin navigation"}>
           {navigationGroups.map((group) => (
             <section className="nav-group" key={group.en}>
               <p className="nav-group-title">{locale === "ko" ? group.ko : group.en}</p>
@@ -112,7 +129,7 @@ export default function AdminSidebar() {
                 {group.items.map((item) => {
                   const active = isActivePath(pathname, item.href);
                   return (
-                    <Link key={item.href} href={item.href} className={active ? "active" : undefined} aria-current={active ? "page" : undefined}>
+                    <Link key={item.href} href={item.href} className={active ? "active" : undefined} aria-current={active ? "page" : undefined} onClick={() => setMobileOpen(false)}>
                       <span className="nav-icon"><GyIcon name={item.icon} /></span>
                       <span className="nav-label">{locale === "ko" ? item.ko : item.en}</span>
                       <span className="nav-arrow" aria-hidden="true">›</span>

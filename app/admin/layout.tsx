@@ -1,4 +1,5 @@
 import AdminSidebar from "@/components/admin/AdminSidebar";
+import AdminMobileDock from "@/components/admin/AdminMobileDock";
 import { AdminLocaleProvider } from "@/components/admin/AdminLocale";
 import { isOwner } from "@/lib/auth/owner";
 import { createClient } from "@/lib/supabase/server";
@@ -20,6 +21,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <main className="admin-main">
           <div className="admin-content-wrap">{children}</div>
         </main>
+        <AdminMobileDock />
       </div>
     </AdminLocaleProvider>
   );

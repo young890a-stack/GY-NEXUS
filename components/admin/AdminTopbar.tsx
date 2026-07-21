@@ -4,6 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const labels: Array<[string, string]> = [
+  ["/admin/mobile-auto-shorts", "GY Mobile Auto Shorts"],
+  ["/admin/revenue-shorts", "GY Revenue Shorts OS"],
+  ["/admin/china-video-lab", "GY China Video Lab"],
+  ["/admin/publishing", "GY Publishing Center"],
   ["/admin/company-os", "GY Command Center"],
   ["/admin/quality-center", "GY Quality"],
   ["/admin/publishing-strategy", "GY Publishing Strategy"],

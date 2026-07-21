@@ -1,0 +1,41 @@
+GY-NEXUS MOBILE AUTO SHORTS INTEGRATION
+=======================================
+
+STATUS: PRODUCTION BUILD PASSED
+DATE: 2026-07-21
+
+NEW
+- /admin/mobile-auto-shorts
+- MobileAutoShorts one-click workflow
+- AdminMobileDock fixed mobile navigation
+- Collapsible mobile admin sidebar
+- Affiliate-link quick import and editable fallback
+- Product + trend candidate merged loading
+- Cross-module shortcut navigation
+
+CONNECTED
+- Product Intelligence
+- Affiliate Product Import
+- China Video Lab / public trend search
+- Creative Studio Pro project planning
+- Productization, script, subtitle and thumbnail package
+- OpenAI image generation and quality review
+- OpenAI Korean voice generation
+- Runway scene generation
+- FFmpeg video worker render
+- Publishing Center private YouTube queue
+- Connection diagnostics
+
+VALIDATION
+- npm run typecheck: PASS
+- npm run lint: PASS (0 errors, existing warnings only)
+- npm run build: PASS
+- Next.js compiled successfully
+- TypeScript finished successfully
+- Static pages generated: 84/84
+- New route verified in build output: /admin/mobile-auto-shorts
+
+DATABASE / ENVIRONMENT
+- No new SQL migration required
+- No new environment variable required
+- Uses existing Supabase, OpenAI, Runway and video-worker configuration
