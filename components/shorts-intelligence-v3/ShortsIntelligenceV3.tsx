@@ -240,7 +240,7 @@ export default function ShortsIntelligenceV3() {
           <h1>Gemini Pro China Discovery Engine</h1>
           <p>도우인·샤오홍슈 로그인 화면의 공개 카드 100~300개를 안전하게 모으고, Gemini Pro 또는 Gemini API로 수익화 가능성을 선별합니다.</p>
         </div>
-        <button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "불러오는 중" : "새로고침"}</button>
+        <div className={styles.actionRow}><a className={styles.linkButton} href="/admin/shorts-intelligence-v3/scene-intelligence">V3-3 장면 분석실</a><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "불러오는 중" : "새로고침"}</button></div>
       </header>
 
       {message && <div className={styles.message}>{message}</div>}
