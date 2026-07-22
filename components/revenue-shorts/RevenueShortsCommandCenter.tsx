@@ -60,9 +60,14 @@ type ImportedProduct = {
   name: string;
   description: string;
   imageUrl: string;
+  originalImageUrl?: string;
+  imageStored?: boolean;
+  imageSource?: "storage" | "remote" | "none";
   priceText: string;
+  discountText?: string;
   platform: string;
   finalUrl: string;
+  resolvedUrl?: string;
   source: "database" | "page-metadata" | "link-only";
   warning?: string;
 };
@@ -211,6 +216,7 @@ export default function RevenueShortsCommandCenter() {
   const [productName, setProductName] = useState("");
   const [productDescription, setProductDescription] = useState("");
   const [productImageUrl, setProductImageUrl] = useState("");
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const [priceText, setPriceText] = useState("");
   const [platform, setPlatform] = useState("");
   const [chineseKeyword, setChineseKeyword] = useState("");
@@ -335,12 +341,22 @@ export default function RevenueShortsCommandCenter() {
       setAffiliateUrl(product.finalUrl || affiliateUrl.trim());
       if (product.name) setProductName(product.name);
       if (product.description) setProductDescription(product.description);
-      if (product.imageUrl) setProductImageUrl(product.imageUrl);
-      if (product.priceText) setPriceText(product.priceText);
+      if (product.imageUrl) {
+        setProductImageUrl(product.imageUrl);
+        setImageLoadFailed(false);
+      }
+      if (product.priceText) {
+        setPriceText(product.discountText ? `${product.priceText} · ${product.discountText} 할인` : product.priceText);
+      }
       if (product.platform) setPlatform(product.platform);
       const keyword = localChineseKeyword(product.name || productName);
       setChineseKeyword(keyword);
-      setStatus(product.warning || `상품 정보를 불러왔습니다. 중국 검색어 ${keyword}도 준비했습니다.`);
+      const imageStatus = product.imageStored
+        ? "대표 이미지도 GY 저장소에 복사했습니다."
+        : product.imageUrl
+          ? "대표 이미지는 외부 주소로 확인했습니다. 화면에서 깨지면 직접 업로드해주세요."
+          : "대표 이미지를 찾지 못했습니다. 직접 업로드 또는 AI 이미지 생성으로 보완해주세요.";
+      setStatus(product.warning || `상품 정보를 불러왔습니다. ${imageStatus} 중국 검색어 ${keyword}도 준비했습니다.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "상품 정보 불러오기 실패");
     } finally {
@@ -348,6 +364,34 @@ export default function RevenueShortsCommandCenter() {
     }
   }
 
+  async function uploadProductImage(file: File | undefined) {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("상품 이미지는 JPG, PNG, WEBP 형식만 사용할 수 있습니다.");
+      return;
+    }
+    if (file.size < 1 || file.size > 8 * 1024 * 1024) {
+      setError("상품 이미지는 8MB 이하여야 합니다.");
+      return;
+    }
+    setBusy("product-image-upload");
+    setError("");
+    setStatus("상품 이미지를 GY 저장소에 업로드하고 있습니다.");
+    try {
+      const form = new FormData();
+      form.append("images", file);
+      const response = await fetch("/api/creative-studio-pro/references", { method: "POST", body: form });
+      const data = await response.json() as { success?: boolean; urls?: string[]; message?: string };
+      if (!response.ok || !data.success || !data.urls?.[0]) throw new Error(data.message || "상품 이미지 업로드 실패");
+      setProductImageUrl(data.urls[0]);
+      setImageLoadFailed(false);
+      setStatus("상품 이미지를 GY 저장소에 안전하게 저장했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "상품 이미지 업로드 실패");
+    } finally {
+      setBusy("");
+    }
+  }
   async function prepareChineseSearch() {
     const base = productName.trim();
     if (!base) {
@@ -834,12 +878,24 @@ export default function RevenueShortsCommandCenter() {
         </div>
         <div className={styles.productGrid}>
           <div className={styles.productPreview}>
-            {productImageUrl ? <img src={productImageUrl} alt={productName || "상품 이미지"} /> : <div><strong>상품 이미지</strong><span>제휴링크에서 자동 수집</span></div>}
+            <div className={styles.productPreviewMedia}>
+              {productImageUrl && !imageLoadFailed
+                ? <img src={productImageUrl} alt={productName || "상품 이미지"} onError={() => { setImageLoadFailed(true); setStatus("외부 상품 이미지 표시가 차단됐습니다. 아래 직접 업로드를 사용해주세요."); }} />
+                : <div><strong>상품 이미지</strong><span>{productImageUrl ? "외부 이미지 표시 실패" : "제휴링크에서 자동 수집"}</span></div>}
+            </div>
+            <div className={styles.imageFallbackActions}>
+              <label className={styles.imageUploadButton}>
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event: ChangeEvent<HTMLInputElement>) => void uploadProductImage(event.target.files?.[0])} />
+                <span>{busy === "product-image-upload" ? "이미지 저장 중..." : "상품 이미지 직접 업로드"}</span>
+              </label>
+              <a href="/admin/creative-studio-pro" target="_blank" rel="noreferrer">AI 상품 이미지 만들기</a>
+            </div>
           </div>
           <div className={styles.productFields}>
             <label><span>상품명</span><input value={productName} onChange={(event: ChangeEvent<HTMLInputElement>) => setProductName(event.target.value)} placeholder="상품명" /></label>
-            <label><span>가격</span><input value={priceText} onChange={(event: ChangeEvent<HTMLInputElement>) => setPriceText(event.target.value)} placeholder="자동 확인 또는 직접 입력" /></label>
+            <label><span>가격·할인</span><input value={priceText} onChange={(event: ChangeEvent<HTMLInputElement>) => setPriceText(event.target.value)} placeholder="자동 확인 또는 직접 입력" /></label>
             <label className={styles.wide}><span>상품 설명·판매 포인트</span><textarea value={productDescription} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setProductDescription(event.target.value)} placeholder="상품 설명과 실제 장점" /></label>
+            <label className={styles.wide}><span>상품 이미지 주소</span><input value={productImageUrl} onChange={(event: ChangeEvent<HTMLInputElement>) => { setProductImageUrl(event.target.value); setImageLoadFailed(false); }} placeholder="자동 저장된 Supabase 이미지 주소 또는 직접 입력" /></label>
             <label><span>판매 플랫폼</span><input value={platform} onChange={(event: ChangeEvent<HTMLInputElement>) => setPlatform(event.target.value)} placeholder="coupang / temu / naver" /></label>
             <label><span>중국어 검색어</span><input value={chineseKeyword} onChange={(event: ChangeEvent<HTMLInputElement>) => setChineseKeyword(event.target.value)} placeholder="예: 手持小风扇" /></label>
           </div>
