@@ -364,3 +364,48 @@
     flex-direction: column;
   }
 }
+
+
+.connectorAction {
+  color: #ffd07f;
+  background: rgba(231, 159, 55, .16);
+}
+.connectorDetails {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 8px;
+  min-width: 0;
+}
+.connectorDetails p { margin: 0; }
+.platformStates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.platformStates span {
+  display: flex;
+  gap: 6px;
+  max-width: 100%;
+  padding: 7px 9px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 9px;
+  color: #8795ac;
+  background: rgba(255,255,255,.025);
+  font-size: 10px;
+}
+.platformStates b { color: #dce5f4; }
+.connectorPing {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 10px;
+  color: #dce5f4;
+  background: rgba(255,255,255,.04);
+  font-size: 10px;
+  font-weight: 850;
+}
+@media (max-width: 800px) {
+  .connectorPing { width: 100%; }
+  .platformStates { flex-direction: column; }
+}
