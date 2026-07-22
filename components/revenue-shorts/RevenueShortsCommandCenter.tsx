@@ -68,7 +68,7 @@ type ImportedProduct = {
   platform: string;
   finalUrl: string;
   resolvedUrl?: string;
-  source: "database" | "page-metadata" | "link-only";
+  source: "database" | "coupang-api" | "page-metadata" | "link-only";
   warning?: string;
 };
 
@@ -339,17 +339,17 @@ export default function RevenueShortsCommandCenter() {
       if (!response.ok || !data.success || !data.product) throw new Error(data.message || "상품 정보 불러오기 실패");
       const product = data.product;
       setAffiliateUrl(product.finalUrl || affiliateUrl.trim());
-      if (product.name) setProductName(product.name);
-      if (product.description) setProductDescription(product.description);
-      if (product.imageUrl) {
-        setProductImageUrl(product.imageUrl);
-        setImageLoadFailed(false);
-      }
-      if (product.priceText) {
-        setPriceText(product.discountText ? `${product.priceText} · ${product.discountText} 할인` : product.priceText);
-      }
-      if (product.platform) setPlatform(product.platform);
-      const keyword = localChineseKeyword(product.name || productName);
+      setProductName(product.name || "");
+      setProductDescription(product.description || "");
+      setProductImageUrl(product.imageUrl || "");
+      setImageLoadFailed(false);
+      setPriceText(product.priceText
+        ? product.discountText
+          ? `${product.priceText} · ${product.discountText} 할인`
+          : product.priceText
+        : "");
+      setPlatform(product.platform || "");
+      const keyword = product.name ? localChineseKeyword(product.name) : "";
       setChineseKeyword(keyword);
       const imageStatus = product.imageStored
         ? "대표 이미지도 GY 저장소에 복사했습니다."

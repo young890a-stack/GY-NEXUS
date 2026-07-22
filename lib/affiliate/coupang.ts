@@ -182,6 +182,34 @@ export async function discoverCoupangProducts(input: {
   return { items: items.slice(0, limit), payload };
 }
 
+
+export async function findCoupangProductById(productId: string) {
+  const normalizedId = String(productId || "").trim();
+  if (!/^\d+$/.test(normalizedId)) {
+    throw new CoupangPartnersError("쿠팡 상품번호가 올바르지 않습니다.", 400, "INVALID_PRODUCT_ID");
+  }
+
+  const params = new URLSearchParams();
+  params.set("keyword", normalizedId);
+  params.set("limit", "10");
+  params.set("imageSize", process.env.COUPANG_IMAGE_SIZE?.trim() || "512x512");
+  params.set("srpLinkOnly", "false");
+  const subId = process.env.COUPANG_SUB_ID?.trim();
+  if (subId) params.set("subId", subId);
+
+  const payload = await request(`${API_PREFIX}/products/search`, params);
+  const items = normalizeProducts(payload, "search", normalizedId);
+  const exact = items.find((item) => item.externalId === normalizedId);
+  if (!exact) {
+    throw new CoupangPartnersError(
+      `쿠팡 API에서 상품번호 ${normalizedId}와 정확히 일치하는 상품을 찾지 못했습니다.`,
+      404,
+      "COUPANG_PRODUCT_NOT_FOUND",
+    );
+  }
+  return exact;
+}
+
 export async function testCoupangConnection() {
   const result = await discoverCoupangProducts({ mode: "search", keyword: "노트북", limit: 1 });
   return result.items[0];
