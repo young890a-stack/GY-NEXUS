@@ -9,12 +9,16 @@ window.addEventListener("message", (event) => {
   if (message.type === "GY_CHINA_CONNECTOR_PING") {
     chrome.runtime.sendMessage({ type: "GY_CONNECTOR_PING" }, (response) => {
       if (chrome.runtime.lastError || !response?.success) return;
-      window.postMessage({ source: RESPONSE_SOURCE, type: "GY_CHINA_CONNECTOR_PONG" }, window.location.origin);
+      window.postMessage(
+        { source: RESPONSE_SOURCE, type: "GY_CHINA_CONNECTOR_PONG" },
+        window.location.origin,
+      );
     });
     return;
   }
 
   if (message.type !== "GY_CHINA_CONNECTOR_SEARCH") return;
+
   chrome.runtime.sendMessage({
     type: "GY_NATIVE_CHINA_SEARCH",
     requestId: String(message.requestId || ""),
@@ -25,11 +29,15 @@ window.addEventListener("message", (event) => {
     const payload = chrome.runtime.lastError
       ? { success: false, message: chrome.runtime.lastError.message }
       : response;
+
     window.postMessage({
       source: RESPONSE_SOURCE,
       type: "GY_CHINA_CONNECTOR_RESULTS",
       requestId: message.requestId,
-      ...(payload || { success: false, message: "No response from the Edge connector." }),
+      ...(payload || {
+        success: false,
+        message: "Edge 연결기에서 응답이 없습니다. 확장 프로그램을 새로고침해주세요.",
+      }),
     }, window.location.origin);
   });
 });

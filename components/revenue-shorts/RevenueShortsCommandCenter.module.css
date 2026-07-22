@@ -312,3 +312,55 @@
   .fallbackPlayer > img { min-height: 460px; height: 460px; }
   .selectedFiles article label { grid-template-columns: 1fr; }
 }
+
+
+.connectorBar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px;
+  background: rgba(7, 12, 25, .62);
+}
+.connectorBar > div {
+  display: grid;
+  min-width: 130px;
+  gap: 3px;
+  padding: 9px 12px;
+  border-radius: 10px;
+}
+.connectorBar span {
+  font-size: 9px;
+  font-weight: 1000;
+  letter-spacing: .13em;
+}
+.connectorBar strong {
+  color: #fff;
+  font-size: 13px;
+}
+.connectorBar p {
+  margin: 0;
+  color: #9aa7bf;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.connectorConnected {
+  color: #75edc2;
+  background: rgba(67, 197, 146, .13);
+}
+.connectorSearching {
+  color: #7bd7ff;
+  background: rgba(62, 146, 232, .15);
+}
+.connectorMissing {
+  color: #ffc77a;
+  background: rgba(223, 148, 51, .14);
+}
+@media (max-width: 700px) {
+  .connectorBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

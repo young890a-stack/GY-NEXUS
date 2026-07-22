@@ -227,7 +227,9 @@ export default function RevenueShortsCommandCenter() {
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [previewCutIndex, setPreviewCutIndex] = useState(0);
   const [render, setRender] = useState<RenderStatus>({ projectId: "", status: "", finalVideoUrl: "" });
+  const [connectorState, setConnectorState] = useState<"checking" | "connected" | "missing" | "searching">("checking");
   const mixVideoRef = useRef<HTMLVideoElement | null>(null);
+  const edgeTimeoutRef = useRef<number | null>(null);
 
   const selectedResults = useMemo(
     () => searchResults.filter((item) => selectedIds.includes(item.id)),
@@ -246,7 +248,24 @@ export default function RevenueShortsCommandCenter() {
     function receiveConnectorResults(event: MessageEvent) {
       if (event.source !== window || event.origin !== window.location.origin) return;
       const payload = event.data as Record<string, unknown> | null;
-      if (!payload || payload.source !== "GY_CHINA_CONNECTOR" || payload.type !== "GY_CHINA_CONNECTOR_RESULTS") return;
+      if (!payload || payload.source !== "GY_CHINA_CONNECTOR") return;
+
+      if (payload.type === "GY_CHINA_CONNECTOR_PONG") {
+        setConnectorState("connected");
+        setStatus("Edge 중국 영상 연결기가 정상 연결되었습니다.");
+        return;
+      }
+
+      if (payload.type !== "GY_CHINA_CONNECTOR_RESULTS") return;
+
+      if (edgeTimeoutRef.current !== null) {
+        window.clearTimeout(edgeTimeoutRef.current);
+        edgeTimeoutRef.current = null;
+      }
+
+      setBusy("");
+      setConnectorState("connected");
+
       const rows = Array.isArray(payload.results) ? payload.results : [];
       const normalized = rows.map((item, index): SearchResult => {
         const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
@@ -267,13 +286,39 @@ export default function RevenueShortsCommandCenter() {
           directVideoUrl: String(row.directVideoUrl || row.videoUrl || row.playUrl || ""),
         };
       }).filter((item) => item.url.startsWith("https://"));
-      if (!normalized.length) return;
-      setSearchResults((current) => Array.from(new Map([...normalized, ...current].map((item) => [item.url, item])).values()));
+
+      const responseMessage = String(payload.message || "").trim();
+
+      if (payload.success === false || !normalized.length) {
+        setError(responseMessage || "도우인·샤오홍슈 검색 화면에서 영상 카드를 찾지 못했습니다. 두 사이트에 로그인한 뒤 다시 검색해주세요.");
+        setStatus("Edge 연결기는 응답했지만 검색 결과가 비어 있습니다.");
+        return;
+      }
+
+      setError("");
+      setSearchResults((current) => Array.from(
+        new Map([...normalized, ...current].map((item) => [item.url, item])).values(),
+      ));
       setStatus(`Edge 로그인 검색에서 영상 ${normalized.length}개를 받았습니다.`);
     }
+
     window.addEventListener("message", receiveConnectorResults);
-    window.postMessage({ source: APP_SOURCE, type: "GY_CHINA_CONNECTOR_PING" }, window.location.origin);
-    return () => window.removeEventListener("message", receiveConnectorResults);
+    window.postMessage(
+      { source: APP_SOURCE, type: "GY_CHINA_CONNECTOR_PING" },
+      window.location.origin,
+    );
+
+    const pingTimeout = window.setTimeout(() => {
+      setConnectorState((current) => current === "checking" ? "missing" : current);
+    }, 2500);
+
+    return () => {
+      window.removeEventListener("message", receiveConnectorResults);
+      window.clearTimeout(pingTimeout);
+      if (edgeTimeoutRef.current !== null) {
+        window.clearTimeout(edgeTimeoutRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -404,17 +449,67 @@ export default function RevenueShortsCommandCenter() {
     }
   }
 
+  function openManualPlatform(platformName: "douyin" | "xiaohongshu") {
+    const query = chineseKeyword.trim() || localChineseKeyword(productName);
+    if (query.trim().length < 2) {
+      setError("상품명 또는 중국어 검색어를 먼저 입력해주세요.");
+      return;
+    }
+
+    const url = platformName === "douyin"
+      ? `https://www.douyin.com/search/${encodeURIComponent(query)}?type=video`
+      : `https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(query)}&source=web_search_result_notes`;
+
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      setError("브라우저가 새 창을 차단했습니다. 주소창 오른쪽의 팝업 차단 아이콘에서 이 사이트의 팝업을 허용해주세요.");
+      return;
+    }
+
+    setError("");
+    setStatus(`${platformName === "douyin" ? "도우인" : "샤오홍슈"} 검색 페이지를 열었습니다. 같은 Edge 프로필에서 로그인 상태를 확인하세요.`);
+  }
+
   function edgeSearch() {
     const query = chineseKeyword.trim() || localChineseKeyword(productName);
+
+    if (query.trim().length < 2) {
+      setError("상품명 또는 중국어 검색어를 먼저 입력해주세요.");
+      return;
+    }
+
+    if (connectorState !== "connected") {
+      setConnectorState("missing");
+      setError("Edge 연결기가 연결되지 않았습니다. edge://extensions에서 GY-NEXUS China Shorts Account Connector를 켠 뒤 이 페이지를 강력 새로고침하세요.");
+      setStatus("연결기 폴더: C:\\Users\\홍영택\\Documents\\GY-CHINA-ACCOUNT-CONNECTOR-EDGE");
+      return;
+    }
+
+    const requestId = window.crypto.randomUUID();
+    setBusy("edge-search");
+    setConnectorState("searching");
+    setError("");
+    setStatus("Edge 연결기가 도우인·샤오홍슈 검색 탭을 열고 보이는 영상 카드를 확인하고 있습니다.");
+
     window.postMessage({
       source: APP_SOURCE,
       type: "GY_CHINA_CONNECTOR_SEARCH",
-      requestId: window.crypto.randomUUID(),
+      requestId,
       query,
       platform: "all",
       limit: 20,
     }, window.location.origin);
-    setStatus("Edge 로그인 검색을 시작했습니다. 열린 도우인·샤오홍슈 화면에서 로그인 확인을 완료해주세요.");
+
+    if (edgeTimeoutRef.current !== null) {
+      window.clearTimeout(edgeTimeoutRef.current);
+    }
+
+    edgeTimeoutRef.current = window.setTimeout(() => {
+      setBusy("");
+      setConnectorState("connected");
+      setError("45초 안에 검색 결과가 오지 않았습니다. 도우인·샤오홍슈 로그인, 보안 확인, 확장 프로그램 새로고침을 확인해주세요.");
+      edgeTimeoutRef.current = null;
+    }, 45000);
   }
 
   async function previewResult(item: SearchResult) {
@@ -844,10 +939,37 @@ export default function RevenueShortsCommandCenter() {
             <label><span>중국어 검색어</span><input value={chineseKeyword} onChange={(event: ChangeEvent<HTMLInputElement>) => setChineseKeyword(event.target.value)} placeholder="예: 手持小风扇" /></label>
           </div>
         </div>
+        <div className={styles.connectorBar}>
+          <div className={
+            connectorState === "connected"
+              ? styles.connectorConnected
+              : connectorState === "searching"
+                ? styles.connectorSearching
+                : styles.connectorMissing
+          }>
+            <span>EDGE CONNECTOR</span>
+            <strong>{
+              connectorState === "connected"
+                ? "연결됨"
+                : connectorState === "searching"
+                  ? "검색 중"
+                  : connectorState === "checking"
+                    ? "확인 중"
+                    : "연결 안 됨"
+            }</strong>
+          </div>
+          <p>{
+            connectorState === "connected"
+              ? "로그인된 Edge 계정으로 도우인·샤오홍슈 검색 카드를 가져올 수 있습니다."
+              : "edge://extensions에서 GY-NEXUS China Shorts Account Connector를 켜주세요."
+          }</p>
+        </div>
         <div className={styles.actionRow}>
           <button className={styles.secondary} onClick={() => void prepareChineseSearch()} disabled={busy === "translate"}>{busy === "translate" ? "검색어 준비 중..." : "중국 검색어 자동 준비"}</button>
-          <button className={styles.primary} onClick={() => void publicSearch()} disabled={busy === "public-search"}>{busy === "public-search" ? "영상 찾는 중..." : "도우인·샤오홍슈 영상 찾기"}</button>
-          <button className={styles.secondary} onClick={edgeSearch}>Edge 로그인 인기영상 검색</button>
+          <button className={styles.primary} onClick={() => void publicSearch()} disabled={busy === "public-search"}>{busy === "public-search" ? "영상 찾는 중..." : "공개 영상 후보 찾기"}</button>
+          <button className={styles.secondary} onClick={edgeSearch} disabled={busy === "edge-search"}>{busy === "edge-search" ? "Edge 검색 중..." : "Edge 로그인 인기영상 검색"}</button>
+          <button className={styles.secondary} onClick={() => openManualPlatform("douyin")}>도우인 직접 열기</button>
+          <button className={styles.secondary} onClick={() => openManualPlatform("xiaohongshu")}>샤오홍슈 직접 열기</button>
         </div>
       </section>
 
