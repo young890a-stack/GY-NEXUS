@@ -7,6 +7,7 @@ import styles from "./ShortsProductionHub.module.css";
 
 type Mode = "manual" | "guided" | "auto";
 type SourceStrategy = "korean-original" | "china-reference" | "single-photo";
+type VoicePreset = "marin" | "coral" | "shimmer" | "cedar" | "onyx" | "echo";
 type StepKey = "product" | "strategy" | "assets" | "project" | "scenes" | "voice" | "render" | "publish";
 type StepState = "waiting" | "running" | "done" | "error";
 
@@ -44,6 +45,59 @@ type CommercePackage = {
   };
 };
 
+
+type VoiceSegment = {
+  id: string;
+  startSecond: number;
+  endSecond: number;
+  text: string;
+  voice: VoicePreset;
+  speed: number;
+  volume: number;
+  delivery: string;
+  audioUrl?: string;
+  updatedAt?: string;
+};
+
+type AudioAsset = {
+  id: string;
+  kind: "music" | "sfx";
+  name: string;
+  url: string;
+  mimeType?: string;
+  sizeBytes?: number;
+};
+
+type MusicTrack = {
+  assetId: string;
+  name: string;
+  url: string;
+  volume: number;
+  startSecond: number;
+  fadeIn: number;
+  fadeOut: number;
+  loop: boolean;
+  autoDuck: boolean;
+  licenseNote: string;
+};
+
+type SfxCue = {
+  id: string;
+  assetId: string;
+  name: string;
+  url: string;
+  startSecond: number;
+  durationSeconds: number;
+  volume: number;
+};
+
+type AudioTimeline = {
+  voiceMasterVolume?: number;
+  voiceSegments?: VoiceSegment[];
+  music?: MusicTrack;
+  sfxCues?: SfxCue[];
+};
+
 type ProjectRecord = {
   id: string;
   title: string;
@@ -52,6 +106,9 @@ type ProjectRecord = {
   final_video_url?: string | null;
   settings?: {
     commercePackage?: CommercePackage;
+    audioTimeline?: AudioTimeline;
+    audioAssets?: AudioAsset[];
+    voiceAudioUrl?: string | null;
   } | null;
 };
 
@@ -140,7 +197,7 @@ export default function ShortsProductionHub() {
   const [duration, setDuration] = useState<15 | 20 | 25 | 30>(20);
   const [tone, setTone] = useState("친근하고 재미있는 생활 밀착형");
   const [style, setStyle] = useState<"problem-solution" | "ugc-review" | "how-to" | "cinematic-product">("problem-solution");
-  const [voicePreset, setVoicePreset] = useState<"marin" | "coral" | "shimmer" | "cedar" | "onyx" | "echo">("marin");
+  const [voicePreset, setVoicePreset] = useState<VoicePreset>("marin");
   const [musicMood, setMusicMood] = useState("bright-commerce");
   const [sfxMode, setSfxMode] = useState<"recommended" | "minimal" | "none">("recommended");
 
@@ -148,6 +205,24 @@ export default function ShortsProductionHub() {
   const [referenceImageUrls, setReferenceImageUrls] = useState<string[]>([]);
   const [factoryResult, setFactoryResult] = useState<ContentFactoryPackage | null>(null);
   const [draftVoiceover, setDraftVoiceover] = useState("");
+  const [voiceSegments, setVoiceSegments] = useState<VoiceSegment[]>([]);
+  const [voiceMasterVolume, setVoiceMasterVolume] = useState(1);
+  const [audioAssets, setAudioAssets] = useState<AudioAsset[]>([]);
+  const [musicFiles, setMusicFiles] = useState<File[]>([]);
+  const [sfxFiles, setSfxFiles] = useState<File[]>([]);
+  const [musicTrack, setMusicTrack] = useState<MusicTrack>({
+    assetId: "",
+    name: "",
+    url: "",
+    volume: 0.16,
+    startSecond: 0,
+    fadeIn: 0.5,
+    fadeOut: 1.2,
+    loop: true,
+    autoDuck: true,
+    licenseNote: "",
+  });
+  const [sfxCues, setSfxCues] = useState<SfxCue[]>([]);
 
   const [projectId, setProjectId] = useState("");
   const [projectDetail, setProjectDetail] = useState<ProjectRecord | null>(null);
@@ -174,6 +249,167 @@ export default function ShortsProductionHub() {
   function moveTo(key: StepKey) {
     setActiveStep(key);
     setError("");
+  }
+
+
+  function makeVoiceSegments(result: ContentFactoryPackage, preset: VoicePreset = voicePreset): VoiceSegment[] {
+    return result.shorts.scenes.map((scene, index) => ({
+      id: `voice-${index + 1}`,
+      startSecond: scene.start,
+      endSecond: scene.end,
+      text: scene.narration || scene.subtitle,
+      voice: preset,
+      speed: 1,
+      volume: 1,
+      delivery: index === 0 ? "빠르고 시선을 끌게" : index === result.shorts.scenes.length - 1 ? "부담 없이 행동을 유도하게" : "자연스럽고 또렷하게",
+      audioUrl: "",
+    }));
+  }
+
+  function effectiveVoiceSegments() {
+    if (voiceSegments.length) return voiceSegments;
+    if (factoryResult) return makeVoiceSegments(factoryResult);
+    return projectScenes.map((scene, index) => ({
+      id: `voice-${index + 1}`,
+      startSecond: Number(scene.start_second) || index * 2,
+      endSecond: Number(scene.end_second) || index * 2 + 2,
+      text: scene.narration || scene.subtitle_text || "",
+      voice: voicePreset,
+      speed: 1,
+      volume: 1,
+      delivery: "자연스럽고 또렷하게",
+      audioUrl: "",
+    })).filter((segment) => segment.text);
+  }
+
+  function updateVoiceSegment(id: string, patch: Partial<VoiceSegment>) {
+    setVoiceSegments((current) => current.map((segment) => segment.id === id ? { ...segment, ...patch, audioUrl: patch.text !== undefined || patch.voice !== undefined || patch.delivery !== undefined ? "" : segment.audioUrl } : segment));
+  }
+
+  function updateSfxCue(id: string, patch: Partial<SfxCue>) {
+    setSfxCues((current) => current.map((cue) => cue.id === id ? { ...cue, ...patch } : cue));
+  }
+
+  function addSfxCue(asset: AudioAsset) {
+    const nextIndex = sfxCues.length;
+    setSfxCues((current) => [...current, {
+      id: `sfx-cue-${Date.now()}-${nextIndex}`,
+      assetId: asset.id,
+      name: asset.name,
+      url: asset.url,
+      startSecond: Math.min(duration - 0.2, nextIndex * 2),
+      durationSeconds: 2,
+      volume: 0.7,
+    }]);
+  }
+
+  async function uploadAudioAssets(kind: "music" | "sfx", files: File[]) {
+    if (!projectId) throw new Error("먼저 영상 프로젝트를 만들어주세요.");
+    if (!files.length) throw new Error("업로드할 음원 파일을 선택해주세요.");
+    const form = new FormData();
+    form.append("kind", kind);
+    files.slice(0, 8).forEach((file) => form.append("files", file));
+    const data = await jsonRequest<{ success?: boolean; assets?: AudioAsset[]; allAssets?: AudioAsset[] }>(
+      `/api/creative-studio-pro/projects/${projectId}/audio-assets`,
+      { method: "POST", body: form },
+    );
+    const assets = Array.isArray(data.assets) ? data.assets : [];
+    if (Array.isArray(data.allAssets)) setAudioAssets(data.allAssets);
+    else setAudioAssets((current) => [...current, ...assets]);
+    if (kind === "music" && assets[0]) {
+      const asset = assets[0];
+      setMusicTrack((current) => ({ ...current, assetId: asset.id, name: asset.name, url: asset.url }));
+    }
+    return assets;
+  }
+
+  async function saveAudioTimelineCore(id: string, segments = effectiveVoiceSegments()) {
+    const data = await jsonRequest<{ success?: boolean; timeline?: AudioTimeline }>(
+      `/api/creative-studio-pro/projects/${id}/audio-timeline`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voiceMasterVolume,
+          voiceSegments: segments,
+          music: musicTrack,
+          sfxCues,
+          musicMood,
+          sfxMode,
+        }),
+      },
+    );
+    if (data.timeline?.voiceSegments) setVoiceSegments(data.timeline.voiceSegments);
+    return data.timeline;
+  }
+
+  async function saveAudioTimeline() {
+    if (!projectId || busy) {
+      if (!projectId) setError("먼저 영상 프로젝트를 만들어주세요.");
+      return;
+    }
+    setBusy("audio-save");
+    setError("");
+    try {
+      await saveAudioTimelineCore(projectId);
+      setMessage("문장별 음성·배경음악·효과음 타임라인을 저장했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "오디오 타임라인 저장 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function uploadMusic() {
+    if (busy) return;
+    setBusy("music-upload");
+    setError("");
+    try {
+      const assets = await uploadAudioAssets("music", musicFiles);
+      setMessage(`${assets.length}개 배경음악을 프로젝트에 연결했습니다.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "배경음악 업로드 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function uploadSfx() {
+    if (busy) return;
+    setBusy("sfx-upload");
+    setError("");
+    try {
+      const assets = await uploadAudioAssets("sfx", sfxFiles);
+      setMessage(`${assets.length}개 효과음을 소재함에 저장했습니다.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "효과음 업로드 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function regenerateVoiceSegment(segmentId: string) {
+    if (!projectId || busy) return;
+    setBusy(`voice-${segmentId}`);
+    setError("");
+    try {
+      const segments = effectiveVoiceSegments();
+      await saveAudioTimelineCore(projectId, segments);
+      const data = await jsonRequest<{ success?: boolean; voiceSegments?: VoiceSegment[] }>(
+        `/api/creative-studio-pro/projects/${projectId}/voice`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ segments, segmentId }),
+        },
+      );
+      if (Array.isArray(data.voiceSegments)) setVoiceSegments(data.voiceSegments);
+      setMessage("선택한 문장의 음성만 다시 생성했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "문장 음성 재생성 실패");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function importAffiliateProduct() {
@@ -242,6 +478,7 @@ export default function ShortsProductionHub() {
 
     setFactoryResult(data.result);
     setDraftVoiceover(data.result.shorts.voiceover);
+    setVoiceSegments(makeVoiceSegments(data.result));
     markStep("strategy", "done", `${data.result.shorts.durationSeconds}초 대본·${data.result.shorts.scenes.length}개 장면`);
     setMessage("대본과 장면표가 준비됐습니다. 대표님이 수정한 내용은 프로젝트 지시문에 반영됩니다.");
     setActiveStep("assets");
@@ -415,12 +652,19 @@ export default function ShortsProductionHub() {
         ratio: "720:1280",
         style,
         subtitleMode: "korean",
-        voiceMode: "female",
+        voiceMode: (["cedar", "onyx", "echo"] as VoicePreset[]).includes(voicePreset) ? "male" : "female",
         voicePreset,
         musicMood,
         subtitleStyle: "bold-pop",
         thumbnailStyle: "benefit-arrow",
         sfxMode,
+        audioTimeline: {
+          version: 2,
+          voiceMasterVolume,
+          voiceSegments: voiceSegments.length ? voiceSegments : makeVoiceSegments(result),
+          music: musicTrack,
+          sfxCues,
+        },
         platformTargets: ["youtube", "instagram"],
         qualityThreshold: 85,
         maxImageRetries: 2,
@@ -512,16 +756,23 @@ export default function ShortsProductionHub() {
     }
   }
 
-  async function generateVoiceCore(id: string) {
+  async function generateVoiceCore(id: string, segmentOverride?: VoiceSegment[]) {
     markStep("voice", "running");
-    setMessage("승인 대본으로 한국어 음성을 만들고 음악·효과음 설정을 저장하고 있습니다.");
-    await jsonRequest(`/api/creative-studio-pro/projects/${id}/voice`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ voice: voicePreset }),
-    });
-    markStep("voice", "done", `${voicePreset} 음성 · ${musicMood} · 효과음 ${sfxMode}`);
-    setMessage("음성 준비가 끝났습니다. Runway 장면 영상과 최종 MP4를 만들 차례입니다.");
+    setMessage("문장별 한국어 음성을 만들고 음악·효과음 타임라인을 저장하고 있습니다.");
+    const segments = segmentOverride?.length ? segmentOverride : effectiveVoiceSegments();
+    if (!segments.length) throw new Error("대본 문장을 먼저 준비해주세요.");
+    await saveAudioTimelineCore(id, segments);
+    const data = await jsonRequest<{ success?: boolean; voiceSegments?: VoiceSegment[] }>(
+      `/api/creative-studio-pro/projects/${id}/voice`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voice: voicePreset, segments }),
+      },
+    );
+    if (Array.isArray(data.voiceSegments)) setVoiceSegments(data.voiceSegments);
+    markStep("voice", "done", `문장 음성 ${data.voiceSegments?.length || segments.length}개 · 음악 ${musicTrack.url ? "직접 음원" : musicMood} · 효과음 ${sfxCues.length}개`);
+    setMessage("오디오 타임라인이 준비됐습니다. Runway 장면 영상과 최종 MP4를 만들 차례입니다.");
     setActiveStep("render");
   }
 
@@ -696,7 +947,8 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
         : await createProjectCore(result, references);
 
       await prepareScenesCore(created.id, created.sceneCount);
-      await generateVoiceCore(created.id);
+      const automaticSegments = voiceSegments.length ? voiceSegments : makeVoiceSegments(result);
+      await generateVoiceCore(created.id, automaticSegments);
       await renderCore(created.id, created.sceneCount);
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : "완전자동 제작이 중단됐습니다.";
@@ -758,7 +1010,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       assets: "실제 상품 사진은 최소 1장, 가능하면 서로 다른 각도 2~4장이 좋습니다. 상품 형태 정확도가 올라갑니다.",
       project: "한국형 직접 제작 또는 중국 인기 구조 참고 방식을 선택하고 프로젝트를 생성하세요.",
       scenes: "AI가 상품 장면을 만들고 85점 기준으로 자동 검수합니다. 불량 장면만 다시 생성할 수 있는 기반입니다.",
-      voice: "목소리·음악 분위기·효과음 강도를 선택하세요. 음성은 자막과 장면 길이에 맞춰 생성됩니다.",
+      voice: "문장별 목소리·속도·연기를 수정하고, YouTube 오디오 라이브러리 음악과 효과음을 타임라인에 배치하세요.",
       render: "Runway 사용량이 발생할 수 있습니다. 장면과 음성을 확인한 뒤 최종 MP4 제작을 승인하세요.",
       publish: "완성 영상을 확인한 뒤 YouTube 비공개 대기열에만 등록합니다. 공개 전 대표님 최종 승인을 유지합니다.",
     };
@@ -908,11 +1160,17 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
     }
 
     if (activeStep === "voice") {
+      const musicAssets = audioAssets.filter((asset) => asset.kind === "music");
+      const sfxAssets = audioAssets.filter((asset) => asset.kind === "sfx");
       return (
         <section className={styles.stageCard}>
-          <div className={styles.stageHeading}><div><span>STEP 06</span><h2>음성·음악·효과음</h2></div><strong>오디오 레이어</strong></div>
-          <div className={styles.formGrid}>
-            <label>한국어 음성<select value={voicePreset} onChange={(event: ChangeEvent<HTMLSelectElement>) => setVoicePreset(event.target.value as typeof voicePreset)}>
+          <div className={styles.stageHeading}>
+            <div><span>STEP 06 · PHASE 2</span><h2>음성·음악·효과음 타임라인</h2></div>
+            <strong>{voiceSegments.filter((segment) => segment.audioUrl).length}/{voiceSegments.length} 문장 음성</strong>
+          </div>
+
+          <div className={styles.audioSummary}>
+            <label>기본 한국어 음성<select value={voicePreset} onChange={(event: ChangeEvent<HTMLSelectElement>) => setVoicePreset(event.target.value as VoicePreset)}>
               <option value="marin">Marin · 자연스러운 여성</option>
               <option value="coral">Coral · 밝고 친근한 여성</option>
               <option value="shimmer">Shimmer · 부드러운 여성</option>
@@ -920,24 +1178,103 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
               <option value="onyx">Onyx · 낮고 강한 남성</option>
               <option value="echo">Echo · 차분한 남성</option>
             </select></label>
-            <label>배경음악 분위기<select value={musicMood} onChange={(event: ChangeEvent<HTMLSelectElement>) => setMusicMood(event.target.value)}>
+            <label>음성 전체 볼륨 <b>{Math.round(voiceMasterVolume * 100)}%</b>
+              <input type="range" min="0" max="1.5" step="0.05" value={voiceMasterVolume} onChange={(event: ChangeEvent<HTMLInputElement>) => setVoiceMasterVolume(Number(event.target.value))} />
+            </label>
+            <label>기본 음악 분위기<select value={musicMood} onChange={(event: ChangeEvent<HTMLSelectElement>) => setMusicMood(event.target.value)}>
               <option value="bright-commerce">밝고 빠른 쇼핑형</option>
               <option value="summer-fresh">여름·시원함</option>
               <option value="warm-lifestyle">따뜻한 생활형</option>
               <option value="premium-clean">프리미엄·깔끔함</option>
               <option value="modern-corporate">현대적 정보형</option>
+              <option value="none">음악 없음</option>
             </select></label>
-            <label>효과음<select value={sfxMode} onChange={(event: ChangeEvent<HTMLSelectElement>) => setSfxMode(event.target.value as typeof sfxMode)}>
-              <option value="recommended">장면별 자동 추천</option>
-              <option value="minimal">최소 사용</option>
-              <option value="none">사용 안 함</option>
-            </select></label>
-            <label>믹싱 원칙<input value="음성 우선 · 음악 자동 감쇄 · CTA 페이드아웃" readOnly /></label>
           </div>
-          <p className={styles.helper}>YouTube 오디오 라이브러리 음원 업로드 기능은 다음 오디오 편집 단계에서 붙이고, 현재는 프로젝트 음악 분위기와 효과음 지시를 렌더 엔진에 전달합니다.</p>
-          <button className={styles.primary} type="button" onClick={() => void generateVoice()} disabled={Boolean(busy) || !projectId}>
-            {busy === "voice" ? "한국어 음성 생성 중..." : "음성·오디오 설정 생성"}
-          </button>
+
+          <div className={styles.audioSection}>
+            <div className={styles.audioSectionHead}>
+              <div><span>VOICE LAYER</span><h3>문장별 음성 수정</h3></div>
+              <button type="button" className={styles.subtle} onClick={() => setVoiceSegments((current) => current.map((segment) => ({ ...segment, voice: voicePreset, audioUrl: "" })))}>기본 음성 전체 적용</button>
+            </div>
+            {!voiceSegments.length && <p className={styles.helper}>STEP 02에서 대본을 생성하면 장면 시간에 맞는 문장별 음성 레이어가 만들어집니다.</p>}
+            <div className={styles.voiceTimeline}>
+              {voiceSegments.map((segment, index) => (
+                <article className={styles.voiceRow} key={segment.id}>
+                  <div className={styles.timeBadge}>{segment.startSecond.toFixed(1)}~{segment.endSecond.toFixed(1)}초</div>
+                  <div className={styles.voiceText}>
+                    <label>문장 {index + 1}<textarea rows={3} value={segment.text} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => updateVoiceSegment(segment.id, { text: event.target.value })} /></label>
+                    <div className={styles.voiceControls}>
+                      <label>목소리<select value={segment.voice} onChange={(event: ChangeEvent<HTMLSelectElement>) => updateVoiceSegment(segment.id, { voice: event.target.value as VoicePreset })}>
+                        <option value="marin">Marin 여성</option><option value="coral">Coral 여성</option><option value="shimmer">Shimmer 여성</option><option value="cedar">Cedar 남성</option><option value="onyx">Onyx 남성</option><option value="echo">Echo 남성</option>
+                      </select></label>
+                      <label>연기<select value={segment.delivery} onChange={(event: ChangeEvent<HTMLSelectElement>) => updateVoiceSegment(segment.id, { delivery: event.target.value })}>
+                        <option>빠르고 시선을 끌게</option><option>자연스럽고 또렷하게</option><option>신뢰감 있고 차분하게</option><option>놀란 듯 생동감 있게</option><option>부담 없이 행동을 유도하게</option>
+                      </select></label>
+                      <label>속도 {segment.speed.toFixed(2)}x<input type="range" min="0.75" max="1.35" step="0.05" value={segment.speed} onChange={(event: ChangeEvent<HTMLInputElement>) => updateVoiceSegment(segment.id, { speed: Number(event.target.value) })} /></label>
+                      <label>볼륨 {Math.round(segment.volume * 100)}%<input type="range" min="0" max="1.5" step="0.05" value={segment.volume} onChange={(event: ChangeEvent<HTMLInputElement>) => updateVoiceSegment(segment.id, { volume: Number(event.target.value) })} /></label>
+                    </div>
+                  </div>
+                  <div className={styles.voiceActions}>
+                    {segment.audioUrl ? <audio controls preload="none" src={segment.audioUrl} /> : <span>아직 생성 전</span>}
+                    <button type="button" onClick={() => void regenerateVoiceSegment(segment.id)} disabled={Boolean(busy) || !projectId}>{busy === `voice-${segment.id}` ? "생성 중" : "이 문장만 다시 생성"}</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.audioColumns}>
+            <div className={styles.audioSection}>
+              <div className={styles.audioSectionHead}><div><span>MUSIC LAYER</span><h3>배경음악</h3></div></div>
+              <label className={styles.uploadBox}>
+                <input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a" onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicFiles(Array.from(event.target.files || []).slice(0, 1))} />
+                <span>YouTube 오디오 라이브러리 MP3·WAV·M4A 선택</span>
+                <small>상업 이용과 저작자 표시 조건을 확인한 파일을 사용하세요.</small>
+              </label>
+              <button type="button" className={styles.subtle} onClick={() => void uploadMusic()} disabled={Boolean(busy) || !projectId || !musicFiles.length}>{busy === "music-upload" ? "업로드 중" : "배경음악 업로드"}</button>
+              {musicAssets.length > 0 && <label>저장된 음악<select value={musicTrack.assetId} onChange={(event: ChangeEvent<HTMLSelectElement>) => { const asset = musicAssets.find((item) => item.id === event.target.value); if (asset) setMusicTrack((current) => ({ ...current, assetId: asset.id, name: asset.name, url: asset.url })); }}><option value="">선택</option>{musicAssets.map((asset) => <option value={asset.id} key={asset.id}>{asset.name}</option>)}</select></label>}
+              {musicTrack.url && <audio controls preload="none" src={musicTrack.url} />}
+              <div className={styles.compactGrid}>
+                <label>음악 볼륨 {Math.round(musicTrack.volume * 100)}%<input type="range" min="0" max="0.8" step="0.02" value={musicTrack.volume} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, volume: Number(event.target.value) }))} /></label>
+                <label>시작 초<input type="number" min="0" max={duration} step="0.1" value={musicTrack.startSecond} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, startSecond: Number(event.target.value) }))} /></label>
+                <label>페이드 인<input type="number" min="0" max="10" step="0.1" value={musicTrack.fadeIn} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, fadeIn: Number(event.target.value) }))} /></label>
+                <label>페이드 아웃<input type="number" min="0" max="10" step="0.1" value={musicTrack.fadeOut} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, fadeOut: Number(event.target.value) }))} /></label>
+              </div>
+              <label className={styles.checkLine}><input type="checkbox" checked={musicTrack.autoDuck} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, autoDuck: event.target.checked }))} /> 음성이 나올 때 음악 자동 감쇄</label>
+              <label className={styles.checkLine}><input type="checkbox" checked={musicTrack.loop} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, loop: event.target.checked }))} /> 영상 길이까지 음악 반복</label>
+              <label>음원 출처·저작자 표시<textarea rows={2} value={musicTrack.licenseNote} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setMusicTrack((current) => ({ ...current, licenseNote: event.target.value }))} placeholder="예: YouTube 오디오 라이브러리 / 저작자 표시 불필요" /></label>
+            </div>
+
+            <div className={styles.audioSection}>
+              <div className={styles.audioSectionHead}><div><span>SFX LAYER</span><h3>효과음</h3></div><strong>{sfxCues.length}개 배치</strong></div>
+              <label className={styles.uploadBox}>
+                <input type="file" multiple accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a" onChange={(event: ChangeEvent<HTMLInputElement>) => setSfxFiles(Array.from(event.target.files || []).slice(0, 8))} />
+                <span>Whoosh·Pop·Click 등 효과음 선택</span>
+                <small>한 번 업로드한 효과음은 여러 시점에 다시 배치할 수 있습니다.</small>
+              </label>
+              <button type="button" className={styles.subtle} onClick={() => void uploadSfx()} disabled={Boolean(busy) || !projectId || !sfxFiles.length}>{busy === "sfx-upload" ? "업로드 중" : "효과음 소재 업로드"}</button>
+              <div className={styles.assetShelf}>{sfxAssets.map((asset) => <button type="button" key={asset.id} onClick={() => addSfxCue(asset)}>+ {asset.name}</button>)}</div>
+              <div className={styles.sfxTimeline}>
+                {sfxCues.map((cue) => (
+                  <article key={cue.id}>
+                    <strong>{cue.name}</strong>
+                    <label>시작<input type="number" min="0" max={duration} step="0.1" value={cue.startSecond} onChange={(event: ChangeEvent<HTMLInputElement>) => updateSfxCue(cue.id, { startSecond: Number(event.target.value) })} /></label>
+                    <label>길이<input type="number" min="0.1" max="10" step="0.1" value={cue.durationSeconds} onChange={(event: ChangeEvent<HTMLInputElement>) => updateSfxCue(cue.id, { durationSeconds: Number(event.target.value) })} /></label>
+                    <label>볼륨<input type="range" min="0" max="1.5" step="0.05" value={cue.volume} onChange={(event: ChangeEvent<HTMLInputElement>) => updateSfxCue(cue.id, { volume: Number(event.target.value) })} /></label>
+                    <audio controls preload="none" src={cue.url} />
+                    <button type="button" onClick={() => setSfxCues((current) => current.filter((item) => item.id !== cue.id))}>삭제</button>
+                  </article>
+                ))}
+                {!sfxCues.length && <p className={styles.helper}>효과음을 업로드한 뒤 소재 버튼을 눌러 타임라인에 배치하세요.</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.phaseActions}>
+            <button className={styles.subtle} type="button" onClick={() => void saveAudioTimeline()} disabled={Boolean(busy) || !projectId}>{busy === "audio-save" ? "저장 중..." : "타임라인만 저장"}</button>
+            <button className={styles.primary} type="button" onClick={() => void generateVoice()} disabled={Boolean(busy) || !projectId || !voiceSegments.length}>{busy === "voice" ? "문장별 음성 생성 중..." : "전체 문장 음성 생성·오디오 확정"}</button>
+          </div>
+          <p className={styles.helper}>문장별 음성은 각각 다시 생성할 수 있으며, 배경음악은 음성 구간에서 자동으로 낮아지고 효과음은 지정한 초에 최종 MP4로 합성됩니다.</p>
         </section>
       );
     }
