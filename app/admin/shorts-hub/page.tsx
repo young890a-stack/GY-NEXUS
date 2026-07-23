@@ -1,8 +1,8 @@
 import ShortsProductionHub from "@/components/shorts-hub/ShortsProductionHub";
 
 export const metadata = {
-  title: "GY 통합 쇼츠 제작실 · GY-NEXUS",
-  description: "한국형 쇼츠, 중국 쇼핑 숏폼, 미리캔버스, CapCut, AlphaCut, Gemini, SEO와 성과 분석을 한 화면에서 연결합니다.",
+  title: "쇼핑 쇼츠 AI 제작 캔버스 · GY-NEXUS",
+  description: "상품·대본·장면·음성·음악·자막·최종 MP4·비공개 게시를 하나의 프로젝트에서 처리합니다.",
 };
 
 export default function ShortsHubPage() {
