@@ -9,7 +9,7 @@ import styles from "./ShortsProductionHub.module.css";
 type Mode = "manual" | "guided" | "auto";
 type SourceStrategy = "korean-original" | "china-reference" | "single-photo";
 type VoicePreset = "marin" | "coral" | "shimmer" | "cedar" | "onyx" | "echo";
-type StepKey = "product" | "strategy" | "assets" | "project" | "analysis" | "scenes" | "voice" | "render" | "publish";
+type StepKey = "product" | "strategy" | "assets" | "project" | "analysis" | "scenes" | "voice" | "thumbnail" | "render" | "publish";
 type StepState = "waiting" | "running" | "done" | "error";
 
 type CanvasStep = {
@@ -100,6 +100,33 @@ type AudioTimeline = {
 };
 
 
+type ThumbnailFontPreset = "gmarket-bold" | "nanum-round" | "cafe24-surround-air" | "one-mobile-pop" | "one-mobile-title" | "esamanru-bold";
+type ThumbnailStyleProfile = "lifehack" | "deal" | "it-info" | "review";
+
+type ThumbnailVariant = {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  fontPreset: ThumbnailFontPreset;
+  layout: string;
+  canvas: "1080x1920" | "1280x720";
+  accent: string;
+};
+
+type ThumbnailPackage = {
+  styleProfile: ThumbnailStyleProfile;
+  fontPreset: ThumbnailFontPreset;
+  subtitlePreset: ThumbnailFontPreset;
+  mainText: string;
+  subText: string;
+  badgeText: string;
+  variants: ThumbnailVariant[];
+  miricanvasGuide: string[];
+  updatedAt: string;
+};
+
+
 type GeminiSelectedCut = {
   order: number;
   frameIndex: number;
@@ -142,6 +169,31 @@ type MediaAnalysisAsset = {
   updatedAt: string;
 };
 
+type LearningInsight = {
+  area: "hook" | "thumbnail" | "voice" | "offer" | "timing";
+  summary: string;
+  action: string;
+};
+
+type LearningEngineData = {
+  sourceChannel: "youtube" | "instagram" | "manual";
+  views: number;
+  impressions: number;
+  ctr: number;
+  averageViewPercent: number;
+  clicks: number;
+  orders: number;
+  revenue: number;
+  spend: number;
+  saveRate: number;
+  shareRate: number;
+  hookStyle: string;
+  thumbnailStyle: string;
+  publishedAt?: string;
+  lastUpdatedAt?: string;
+  insights: LearningInsight[];
+};
+
 type ProjectRecord = {
   id: string;
   title: string;
@@ -155,6 +207,8 @@ type ProjectRecord = {
     voiceAudioUrl?: string | null;
     mediaAnalysisAssets?: MediaAnalysisAsset[];
     geminiSelectedAssetId?: string;
+    thumbnailPackage?: ThumbnailPackage;
+    learningEngine?: LearningEngineData;
   } | null;
 };
 
@@ -191,8 +245,9 @@ const initialSteps: CanvasStep[] = [
   { key: "analysis", number: "05", label: "Gemini 소재", description: "내 영상 자동 선별", state: "waiting", detail: "" },
   { key: "scenes", number: "06", label: "장면", description: "선별 컷·AI 장면", state: "waiting", detail: "" },
   { key: "voice", number: "07", label: "음성·음악", description: "문장 음성·효과음", state: "waiting", detail: "" },
-  { key: "render", number: "08", label: "영상 합성", description: "최종 MP4", state: "waiting", detail: "" },
-  { key: "publish", number: "09", label: "게시", description: "YouTube 비공개 대기", state: "waiting", detail: "" },
+  { key: "thumbnail", number: "08", label: "썸네일", description: "미리캔버스 패키지", state: "waiting", detail: "" },
+  { key: "render", number: "09", label: "영상 합성", description: "최종 MP4", state: "waiting", detail: "" },
+  { key: "publish", number: "10", label: "게시", description: "YouTube 비공개 대기", state: "waiting", detail: "" },
 ];
 
 function safeFileName(value: string) {
@@ -207,6 +262,42 @@ function downloadText(fileName: string, content: string, mime = "text/plain") {
   anchor.download = fileName;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+const MIRICANVAS_FONT_LABELS: Record<ThumbnailFontPreset, string> = {
+  "gmarket-bold": "지마켓산스 Bold",
+  "nanum-round": "나눔스퀘어라운드 Bold",
+  "cafe24-surround-air": "카페24 써라운드 에어",
+  "one-mobile-pop": "원스토어 모바일POP체",
+  "one-mobile-title": "원스토어 모바일고딕 제목체",
+  "esamanru-bold": "이사만루 Bold",
+};
+
+function defaultFontForStyle(profile: ThumbnailStyleProfile): ThumbnailFontPreset {
+  if (profile === "deal") return "one-mobile-pop";
+  if (profile === "it-info") return "one-mobile-title";
+  if (profile === "review") return "nanum-round";
+  return "gmarket-bold";
+}
+
+function buildThumbnailVariants(params: {
+  styleProfile: ThumbnailStyleProfile;
+  fontPreset: ThumbnailFontPreset;
+  mainText: string;
+  subText: string;
+  badgeText: string;
+  productName: string;
+  factoryResult: ContentFactoryPackage | null;
+}): ThumbnailVariant[] {
+  const fallbackSub = params.subText || (params.factoryResult?.creative.thumbnailCopy?.[1] ?? "지금 많이 찾는 이유");
+  const baseTitle = params.mainText || (params.factoryResult?.creative.thumbnailCopy?.[0] ?? params.productName);
+  const badge = params.badgeText || (params.factoryResult?.creative.thumbnailCopy?.[2] ?? "지금 확인");
+  const alternate = params.styleProfile === "deal" ? "오늘만 가격체크" : params.styleProfile === "it-info" ? "기능 핵심 정리" : params.styleProfile === "review" ? "실사용 후기" : "생활꿀템 추천";
+  return [
+    { id: "thumb-vertical-main", title: baseTitle.slice(0, 28), subtitle: fallbackSub.slice(0, 40), badge: badge.slice(0, 18), fontPreset: params.fontPreset, layout: "상단 메인 + 하단 상품 강조", canvas: "1080x1920", accent: "민트·옐로 포인트" },
+    { id: "thumb-vertical-strong", title: (params.factoryResult?.shorts.hook || baseTitle).slice(0, 28), subtitle: alternate.slice(0, 40), badge: "클릭 유도", fontPreset: params.styleProfile === "deal" ? "one-mobile-pop" : params.fontPreset, layout: "중앙 대제목 + 좌상단 배지", canvas: "1080x1920", accent: "네이비·레몬 대비" },
+    { id: "thumb-youtube-wide", title: baseTitle.slice(0, 26), subtitle: fallbackSub.slice(0, 32), badge: badge.slice(0, 14), fontPreset: params.styleProfile === "it-info" ? "one-mobile-title" : params.fontPreset, layout: "좌측 제목 + 우측 상품/인물", canvas: "1280x720", accent: "화이트·블루 클린" },
+  ];
 }
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
@@ -273,6 +364,31 @@ export default function ShortsProductionHub() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [mediaRightsConfirmed, setMediaRightsConfirmed] = useState(false);
   const [mediaAssets, setMediaAssets] = useState<MediaAnalysisAsset[]>([]);
+  const [thumbnailStyleProfile, setThumbnailStyleProfile] = useState<ThumbnailStyleProfile>("lifehack");
+  const [thumbnailFontPreset, setThumbnailFontPreset] = useState<ThumbnailFontPreset>("gmarket-bold");
+  const [subtitleFontPreset, setSubtitleFontPreset] = useState<ThumbnailFontPreset>("gmarket-bold");
+  const [thumbnailMainText, setThumbnailMainText] = useState("");
+  const [thumbnailSubText, setThumbnailSubText] = useState("");
+  const [thumbnailBadgeText, setThumbnailBadgeText] = useState("");
+  const [thumbnailVariants, setThumbnailVariants] = useState<ThumbnailVariant[]>([]);
+  const [learningData, setLearningData] = useState<LearningEngineData>({
+    sourceChannel: "youtube",
+    views: 0,
+    impressions: 0,
+    ctr: 0,
+    averageViewPercent: 0,
+    clicks: 0,
+    orders: 0,
+    revenue: 0,
+    spend: 0,
+    saveRate: 0,
+    shareRate: 0,
+    hookStyle: "문제 해결형",
+    thumbnailStyle: "생활 꿀템형",
+    publishedAt: "",
+    lastUpdatedAt: "",
+    insights: [],
+  });
 
   const [projectId, setProjectId] = useState("");
   const [projectDetail, setProjectDetail] = useState<ProjectRecord | null>(null);
@@ -351,6 +467,232 @@ export default function ShortsProductionHub() {
       durationSeconds: 2,
       volume: 0.7,
     }]);
+  }
+
+  function seedThumbnailDrafts(result: ContentFactoryPackage) {
+    const styleDefaults: Record<ThumbnailStyleProfile, { font: ThumbnailFontPreset; subtitle: ThumbnailFontPreset; }> = {
+      lifehack: { font: "gmarket-bold", subtitle: "gmarket-bold" },
+      deal: { font: "one-mobile-pop", subtitle: "gmarket-bold" },
+      "it-info": { font: "one-mobile-title", subtitle: "one-mobile-title" },
+      review: { font: "nanum-round", subtitle: "nanum-round" },
+    };
+    const chosen = styleDefaults[thumbnailStyleProfile];
+    setThumbnailFontPreset((current) => current || chosen.font);
+    setSubtitleFontPreset((current) => current || chosen.subtitle);
+    setThumbnailMainText((current) => current || result.creative.thumbnailCopy?.[0] || result.shorts.hook || productName);
+    setThumbnailSubText((current) => current || result.creative.thumbnailCopy?.[1] || result.seo.primaryKeyword || "대표님 승인 문구로 교체 가능");
+    setThumbnailBadgeText((current) => current || result.creative.thumbnailCopy?.[2] || "지금 확인");
+  }
+
+  function currentThumbnailPackage(): ThumbnailPackage {
+    const variants = thumbnailVariants.length ? thumbnailVariants : buildThumbnailVariants({
+      styleProfile: thumbnailStyleProfile,
+      fontPreset: thumbnailFontPreset,
+      mainText: thumbnailMainText,
+      subText: thumbnailSubText,
+      badgeText: thumbnailBadgeText,
+      productName,
+      factoryResult,
+    });
+    return {
+      styleProfile: thumbnailStyleProfile,
+      fontPreset: thumbnailFontPreset,
+      subtitlePreset: subtitleFontPreset,
+      mainText: thumbnailMainText,
+      subText: thumbnailSubText,
+      badgeText: thumbnailBadgeText,
+      variants,
+      miricanvasGuide: [
+        "미리캔버스 새 디자인 열기",
+        "세로 쇼츠 커버는 1080x1920, 유튜브 썸네일은 1280x720 선택",
+        `메인 글씨체: ${MIRICANVAS_FONT_LABELS[thumbnailFontPreset]}`,
+        `자막/타이틀 카드 프리셋: ${MIRICANVAS_FONT_LABELS[subtitleFontPreset]}`,
+        "상품 이미지는 우측 또는 하단, 문구는 최대 2줄로 짧게 유지",
+        "강조 단어는 노랑·민트·화이트 중 1개만 사용",
+      ],
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  async function saveThumbnailPackage() {
+    if (!projectId) {
+      setError("먼저 영상 프로젝트를 만들어주세요.");
+      return;
+    }
+    setBusy("thumbnail-save");
+    setError("");
+    try {
+      const payload = currentThumbnailPackage();
+      const data = await jsonRequest<{ success?: boolean; thumbnailPackage?: ThumbnailPackage }>(
+        `/api/creative-studio-pro/projects/${projectId}/thumbnail-package`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      if (data.thumbnailPackage?.variants) setThumbnailVariants(data.thumbnailPackage.variants);
+      markStep("thumbnail", "done", `${(data.thumbnailPackage?.variants || payload.variants).length}개 썸네일 시안 저장`);
+      setMessage("미리캔버스 작업 패키지와 글씨체 프리셋을 프로젝트에 저장했습니다.");
+      setActiveStep("render");
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "썸네일 패키지 저장 실패";
+      setError(reason);
+      markStep("thumbnail", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function regenerateThumbnailVariants() {
+    const variants = buildThumbnailVariants({
+      styleProfile: thumbnailStyleProfile,
+      fontPreset: thumbnailFontPreset,
+      mainText: thumbnailMainText,
+      subText: thumbnailSubText,
+      badgeText: thumbnailBadgeText,
+      productName,
+      factoryResult,
+    });
+    setThumbnailVariants(variants);
+    markStep("thumbnail", "running", `${variants.length}개 시안 미리보기 생성`);
+    setMessage("미리캔버스용 썸네일 시안을 다시 만들었습니다.");
+  }
+
+  function downloadThumbnailPackage() {
+    const payload = currentThumbnailPackage();
+    const baseName = safeFileName(productName || "GY-shopping-shorts");
+    const markdown = [
+      `# ${productName || "쇼핑 쇼츠"} 미리캔버스 썸네일 패키지`,
+      '',
+      `- 스타일: ${thumbnailStyleProfile}`,
+      `- 메인 글씨체: ${MIRICANVAS_FONT_LABELS[payload.fontPreset]}`,
+      `- 자막/타이틀 카드 프리셋: ${MIRICANVAS_FONT_LABELS[payload.subtitlePreset]}`,
+      '',
+      '## 메인 문구',
+      payload.mainText,
+      '',
+      '## 보조 문구',
+      payload.subText,
+      '',
+      '## 배지 문구',
+      payload.badgeText,
+      '',
+      '## 시안',
+      ...payload.variants.map((variant, index) => `${index + 1}. ${variant.canvas} | ${MIRICANVAS_FONT_LABELS[variant.fontPreset]} | ${variant.layout} | ${variant.title} | ${variant.subtitle} | ${variant.badge}`),
+      '',
+      '## 미리캔버스 작업 순서',
+      ...payload.miricanvasGuide.map((item) => `- ${item}`),
+    ].join("\n");
+    downloadText(`${baseName}-miricanvas-thumbnail-package.md`, markdown, "text/markdown");
+    downloadText(`${baseName}-miricanvas-thumbnail-package.json`, JSON.stringify(payload, null, 2), "application/json");
+    setMessage("미리캔버스용 썸네일 패키지를 다운로드했습니다.");
+  }
+
+  function openMiricanvas() {
+    window.open("https://www.miricanvas.com/", "_blank", "noopener,noreferrer");
+  }
+
+  function computeLearningInsights(base: LearningEngineData): LearningInsight[] {
+    const insights: LearningInsight[] = [];
+    if (base.ctr < 3 && (base.impressions > 0 || base.views > 0)) {
+      insights.push({ area: "thumbnail", summary: "노출 대비 클릭률이 낮습니다.", action: "썸네일 메인 문구를 더 짧게 하고, 미리캔버스 글씨체는 원스토어 모바일POP체 또는 지마켓산스 Bold로 테스트하세요." });
+    } else {
+      insights.push({ area: "thumbnail", summary: "썸네일 반응이 안정적입니다.", action: "현재 썸네일 스타일을 유지하되 색상 대비만 1개 요소씩 A/B 테스트하세요." });
+    }
+    if (base.averageViewPercent < 45 && base.views > 0) {
+      insights.push({ area: "hook", summary: "시청 유지율이 낮아 첫 2초 훅이 약합니다.", action: "첫 문장을 더 짧게 바꾸고, 문제 제기 → 해결 → CTA 순서를 더 빠르게 배치하세요." });
+    } else {
+      insights.push({ area: "hook", summary: "첫 훅이 비교적 잘 버티고 있습니다.", action: "현재 훅 구조를 유지하면서 제품 디테일 컷만 더 빠르게 이어붙이세요." });
+    }
+    const clickRate = base.views > 0 ? (base.clicks / base.views) * 100 : 0;
+    if (clickRate < 2 && base.views > 0) {
+      insights.push({ area: "offer", summary: "조회수 대비 링크 클릭이 낮습니다.", action: "고정댓글 CTA를 더 명확하게 쓰고, 대본 마지막 문장에 혜택·가격 포인트를 넣으세요." });
+    } else {
+      insights.push({ area: "offer", summary: "링크 클릭 흐름은 나쁘지 않습니다.", action: "같은 CTA를 유지하고 클릭이 높은 상품군을 우선 반복하세요." });
+    }
+    const orderRate = base.clicks > 0 ? (base.orders / base.clicks) * 100 : 0;
+    if (orderRate < 5 && base.clicks > 0) {
+      insights.push({ area: "voice", summary: "클릭 후 전환이 약합니다.", action: "음성 톤을 더 신뢰형으로 바꾸고 효능 표현 대신 실제 사용 장면과 구성품 설명을 강화하세요." });
+    } else {
+      insights.push({ area: "voice", summary: "클릭 후 전환 흐름이 양호합니다.", action: "현재 음성 톤과 설명 구조를 다음 상품에도 재사용하세요." });
+    }
+    const profit = base.revenue - base.spend;
+    insights.push({ area: "timing", summary: `현재 추정 순수익은 ${profit.toLocaleString("ko-KR")}원입니다.`, action: profit >= 0 ? "순이익이 나는 상품군·훅·썸네일 조합을 우선 복제하세요." : "비용이 더 큰 경우 조회수보다 클릭과 전환이 높은 상품부터 다시 테스트하세요." });
+    return insights.slice(0, 5);
+  }
+
+  function hydrateLearningData(source?: Partial<LearningEngineData> | null): LearningEngineData {
+    const base: LearningEngineData = {
+      sourceChannel: source?.sourceChannel === "instagram" ? "instagram" : source?.sourceChannel === "manual" ? "manual" : "youtube",
+      views: Number(source?.views || 0),
+      impressions: Number(source?.impressions || 0),
+      ctr: Number(source?.ctr || 0),
+      averageViewPercent: Number(source?.averageViewPercent || 0),
+      clicks: Number(source?.clicks || 0),
+      orders: Number(source?.orders || 0),
+      revenue: Number(source?.revenue || 0),
+      spend: Number(source?.spend || 0),
+      saveRate: Number(source?.saveRate || 0),
+      shareRate: Number(source?.shareRate || 0),
+      hookStyle: String(source?.hookStyle || "문제 해결형"),
+      thumbnailStyle: String(source?.thumbnailStyle || "생활 꿀템형"),
+      publishedAt: String(source?.publishedAt || ""),
+      lastUpdatedAt: String(source?.lastUpdatedAt || ""),
+      insights: Array.isArray(source?.insights) ? (source.insights as LearningInsight[]) : [],
+    };
+    return { ...base, insights: base.insights.length ? base.insights : computeLearningInsights(base) };
+  }
+
+  function updateLearningField<K extends keyof LearningEngineData>(key: K, value: LearningEngineData[K]) {
+    setLearningData((current) => hydrateLearningData({ ...current, [key]: value, lastUpdatedAt: new Date().toISOString() }));
+  }
+
+  async function saveLearningEngine() {
+    if (!projectId || busy) {
+      if (!projectId) setError("먼저 영상 프로젝트를 만들어주세요.");
+      return;
+    }
+    setBusy("learning-save");
+    setError("");
+    try {
+      const payload = hydrateLearningData({ ...learningData, lastUpdatedAt: new Date().toISOString() });
+      const data = await jsonRequest<{ success?: boolean; learningEngine?: LearningEngineData }>(`/api/creative-studio-pro/projects/${projectId}/learning-engine`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setLearningData(hydrateLearningData(data.learningEngine || payload));
+      setMessage("게시 성과·클릭·판매 학습 엔진을 저장했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "학습 엔진 저장 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function downloadLearningReport() {
+    const data = hydrateLearningData(learningData);
+    const baseName = safeFileName(productName || "GY-learning-report");
+    const markdown = [
+      `# ${productName || "쇼핑 쇼츠"} 성과 학습 리포트`,
+      "",
+      `- 채널: ${data.sourceChannel}`,
+      `- 조회수: ${data.views}`,
+      `- 노출수: ${data.impressions}`,
+      `- CTR: ${data.ctr}%`,
+      `- 평균 시청률: ${data.averageViewPercent}%`,
+      `- 링크 클릭: ${data.clicks}`,
+      `- 주문수: ${data.orders}`,
+      `- 매출: ${data.revenue}원`,
+      `- 비용: ${data.spend}원`,
+      "",
+      "## 학습 인사이트",
+      ...data.insights.map((item, index) => `${index + 1}. [${item.area}] ${item.summary} / 실행: ${item.action}`),
+    ].join("\n");
+    downloadText(`${baseName}-learning-report.md`, markdown, "text/markdown");
+    downloadText(`${baseName}-learning-report.json`, JSON.stringify(data, null, 2), "application/json");
+    setMessage("학습 엔진 리포트를 다운로드했습니다.");
   }
 
   async function uploadAudioAssets(kind: "music" | "sfx", files: File[]) {
@@ -649,6 +991,8 @@ export default function ShortsProductionHub() {
     setFactoryResult(data.result);
     setDraftVoiceover(data.result.shorts.voiceover);
     setVoiceSegments(makeVoiceSegments(data.result));
+    seedThumbnailDrafts(data.result);
+    setThumbnailVariants(buildThumbnailVariants({ styleProfile: thumbnailStyleProfile, fontPreset: thumbnailFontPreset, mainText: thumbnailMainText || data.result.creative.thumbnailCopy?.[0] || data.result.shorts.hook, subText: thumbnailSubText || data.result.creative.thumbnailCopy?.[1] || data.result.seo.primaryKeyword, badgeText: thumbnailBadgeText || data.result.creative.thumbnailCopy?.[2] || "지금 확인", productName, factoryResult: data.result }));
     markStep("strategy", "done", `${data.result.shorts.durationSeconds}초 대본·${data.result.shorts.scenes.length}개 장면`);
     setMessage("대본과 장면표가 준비됐습니다. 대표님이 수정한 내용은 프로젝트 지시문에 반영됩니다.");
     setActiveStep("assets");
@@ -865,6 +1209,7 @@ export default function ShortsProductionHub() {
     const latest = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
     setProjectDetail(latest.project || data.project);
     setProjectScenes(Array.isArray(latest.scenes) ? latest.scenes : data.scenes || []);
+    setLearningData(hydrateLearningData((latest.project || data.project)?.settings?.learningEngine || null));
     markStep("project", "done", `${sceneCount}개 장면 프로젝트 생성`);
     setMessage("프로젝트가 저장됐습니다. 내 영상이 있다면 Gemini가 좋은 구간을 자동 선별합니다.");
     setActiveStep("analysis");
@@ -949,8 +1294,8 @@ export default function ShortsProductionHub() {
     );
     if (Array.isArray(data.voiceSegments)) setVoiceSegments(data.voiceSegments);
     markStep("voice", "done", `문장 음성 ${data.voiceSegments?.length || segments.length}개 · 음악 ${musicTrack.url ? "직접 음원" : musicMood} · 효과음 ${sfxCues.length}개`);
-    setMessage("오디오 타임라인이 준비됐습니다. Runway 장면 영상과 최종 MP4를 만들 차례입니다.");
-    setActiveStep("render");
+    setMessage("오디오 타임라인이 준비됐습니다. 이제 미리캔버스용 썸네일 패키지와 글씨체를 확정하세요.");
+    setActiveStep("thumbnail");
   }
 
   async function generateVoice() {
@@ -974,7 +1319,10 @@ export default function ShortsProductionHub() {
   async function pollProject(id: string): Promise<ProjectResponse> {
     for (let attempt = 0; attempt < 90; attempt += 1) {
       const data = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
-      if (data.project) setProjectDetail(data.project);
+      if (data.project) {
+        setProjectDetail(data.project);
+        if (data.project.settings?.learningEngine) setLearningData(hydrateLearningData(data.project.settings.learningEngine));
+      }
       if (Array.isArray(data.scenes)) setProjectScenes(data.scenes);
       if (data.project?.final_video_url) return data;
       if (data.renderJob?.status === "failed") {
@@ -1090,6 +1438,7 @@ ${commerce.cta || "상품 링크에서 자세히 확인하세요."}`.trim(),
       });
 
       setPublishQueued(true);
+      setLearningData((current) => hydrateLearningData({ ...current, sourceChannel: "youtube", publishedAt: new Date().toISOString(), lastUpdatedAt: new Date().toISOString() }));
       markStep("publish", "done", "YouTube 비공개 대기열 등록");
       setMessage("비공개 게시 대기열에 등록했습니다. 게시센터에서 최종 실행할 수 있습니다.");
     } catch (cause) {
@@ -1133,6 +1482,8 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       await prepareScenesCore(created.id, created.sceneCount);
       const automaticSegments = voiceSegments.length ? voiceSegments : makeVoiceSegments(result);
       await generateVoiceCore(created.id, automaticSegments);
+      regenerateThumbnailVariants();
+      await saveThumbnailPackage();
       await renderCore(created.id, created.sceneCount);
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : "완전자동 제작이 중단됐습니다.";
@@ -1196,7 +1547,8 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       analysis: "직접 촬영하거나 사용 권한이 있는 영상을 올리면 Gemini가 첫 2초 훅·사용·디테일·CTA 구간을 자동 선별합니다.",
       scenes: "AI가 상품 장면을 만들고 85점 기준으로 자동 검수합니다. 불량 장면만 다시 생성할 수 있는 기반입니다.",
       voice: "문장별 목소리·속도·연기를 수정하고, YouTube 오디오 라이브러리 음악과 효과음을 타임라인에 배치하세요.",
-      render: "Runway 사용량이 발생할 수 있습니다. 장면과 음성을 확인한 뒤 최종 MP4 제작을 승인하세요.",
+      thumbnail: "미리캔버스에서 실제 지원하는 인기 한글 글씨체 중 하나를 선택하고, 세로 커버·가로 썸네일 시안을 저장하세요.",
+      render: "Runway 사용량이 발생할 수 있습니다. 장면·음성·썸네일 패키지를 확인한 뒤 최종 MP4 제작을 승인하세요.",
       publish: "완성 영상을 확인한 뒤 YouTube 비공개 대기열에만 등록합니다. 공개 전 대표님 최종 승인을 유지합니다.",
     };
     return advice[nextWaitingStep.key];
@@ -1522,10 +1874,106 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       );
     }
 
+    if (activeStep === "thumbnail") {
+      const variants = thumbnailVariants.length ? thumbnailVariants : buildThumbnailVariants({
+        styleProfile: thumbnailStyleProfile,
+        fontPreset: thumbnailFontPreset,
+        mainText: thumbnailMainText,
+        subText: thumbnailSubText,
+        badgeText: thumbnailBadgeText,
+        productName,
+        factoryResult,
+      });
+      const recommendedFonts: Array<{ id: ThumbnailFontPreset; label: string; note: string }> = [
+        { id: "gmarket-bold", label: "지마켓산스 Bold", note: "기본 쇼핑형 · 생활꿀템" },
+        { id: "cafe24-surround-air", label: "카페24 써라운드 에어", note: "친근한 생활 리뷰형" },
+        { id: "one-mobile-pop", label: "원스토어 모바일POP체", note: "할인·강조형" },
+        { id: "one-mobile-title", label: "원스토어 모바일고딕 제목체", note: "가전·IT 정보형" },
+        { id: "esamanru-bold", label: "이사만루 Bold", note: "강한 주목형" },
+        { id: "nanum-round", label: "나눔스퀘어라운드 Bold", note: "부드러운 후기형" },
+      ];
+      return (
+        <section className={styles.stageCard}>
+          <div className={styles.stageHeading}><div><span>STEP 08</span><h2>썸네일 캔버스·미리캔버스 글씨체</h2></div><strong>{variants.length}개 시안</strong></div>
+          <div className={styles.fontSystemNotice}>
+            <div><b>사이트 기본 글씨체</b><span>Pretendard Variable</span></div>
+            <div><b>미리캔버스 글씨체</b><span>지원되는 인기 한글 폰트만 사용</span></div>
+            <div><b>작업 방식</b><span>시안 생성 → 패키지 저장 → 미리캔버스로 마무리</span></div>
+          </div>
+
+          <div className={styles.thumbnailControls}>
+            <label>썸네일 스타일<select value={thumbnailStyleProfile} onChange={(event: ChangeEvent<HTMLSelectElement>) => { const next = event.target.value as ThumbnailStyleProfile; setThumbnailStyleProfile(next); setThumbnailFontPreset(defaultFontForStyle(next)); }}>
+              <option value="lifehack">생활 꿀템형</option>
+              <option value="deal">할인 강조형</option>
+              <option value="it-info">가전·IT 정보형</option>
+              <option value="review">감성 후기형</option>
+            </select></label>
+            <label>메인 글씨체<select value={thumbnailFontPreset} onChange={(event: ChangeEvent<HTMLSelectElement>) => setThumbnailFontPreset(event.target.value as ThumbnailFontPreset)}>{recommendedFonts.map((font) => <option key={font.id} value={font.id}>{font.label}</option>)}</select></label>
+            <label>타이틀 카드·자막 프리셋<select value={subtitleFontPreset} onChange={(event: ChangeEvent<HTMLSelectElement>) => setSubtitleFontPreset(event.target.value as ThumbnailFontPreset)}>{recommendedFonts.map((font) => <option key={font.id} value={font.id}>{font.label}</option>)}</select></label>
+          </div>
+
+          <div className={styles.fontPresetGrid}>
+            {recommendedFonts.map((font) => (
+              <button type="button" key={font.id} className={thumbnailFontPreset === font.id ? styles.selectedPreset : styles.fontPresetCard} onClick={() => setThumbnailFontPreset(font.id)}>
+                <b>{font.label}</b>
+                <span>{font.note}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className={styles.thumbnailEditor}>
+            <label>메인 문구<textarea rows={2} value={thumbnailMainText} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setThumbnailMainText(event.target.value)} placeholder="예: 이거 없이 여름 어떻게 버텼지?" /></label>
+            <label>보조 문구<textarea rows={2} value={thumbnailSubText} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setThumbnailSubText(event.target.value)} placeholder="예: 3초 강풍 · 출퇴근 필수템" /></label>
+            <label>배지 문구<input value={thumbnailBadgeText} onChange={(event: ChangeEvent<HTMLInputElement>) => setThumbnailBadgeText(event.target.value)} placeholder="예: 지금 확인" /></label>
+          </div>
+
+          <div className={styles.thumbnailPreviewGrid}>
+            {variants.map((variant) => (
+              <article key={variant.id} className={styles.thumbnailCard}>
+                <div className={`${styles.thumbnailVisual} ${variant.canvas === "1280x720" ? styles.wideCanvas : styles.verticalCanvas}`}>
+                  <div className={styles.thumbnailBadge}>{variant.badge}</div>
+                  <div className={styles.thumbnailTextStack}>
+                    <strong>{variant.title}</strong>
+                    <span>{variant.subtitle}</span>
+                    <small>{MIRICANVAS_FONT_LABELS[variant.fontPreset]} · {variant.accent}</small>
+                  </div>
+                  <div className={styles.productMock}>상품·인물 영역</div>
+                </div>
+                <div className={styles.thumbnailMeta}>
+                  <b>{variant.canvas}</b>
+                  <span>{variant.layout}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className={styles.miricanvasChecklist}>
+            <h3>미리캔버스 작업 패키지</h3>
+            <ul>
+              <li>메인 글씨체: {MIRICANVAS_FONT_LABELS[thumbnailFontPreset]}</li>
+              <li>타이틀 카드·자막 프리셋: {MIRICANVAS_FONT_LABELS[subtitleFontPreset]}</li>
+              <li>세로 쇼츠 커버 1080×1920 / 유튜브 썸네일 1280×720</li>
+              <li>상품 이미지는 오른쪽, 메인 문구는 최대 2줄 권장</li>
+            </ul>
+          </div>
+
+          <div className={styles.phaseActions}>
+            <button className={styles.subtle} type="button" onClick={regenerateThumbnailVariants}>시안 다시 만들기</button>
+            <button className={styles.subtle} type="button" onClick={downloadThumbnailPackage}>미리캔버스 패키지 다운로드</button>
+          </div>
+          <div className={styles.phaseActions}>
+            <button className={styles.subtle} type="button" onClick={openMiricanvas}>미리캔버스 열기</button>
+            <button className={styles.primary} type="button" onClick={() => void saveThumbnailPackage()} disabled={Boolean(busy) || !projectId}>{busy === "thumbnail-save" ? "저장 중..." : "썸네일·글씨체 패키지 저장"}</button>
+          </div>
+          <p className={styles.helper}>실제 최종 썸네일은 미리캔버스에서 마무리하고, GY-NEXUS는 문구·폰트·레이아웃·규격이 정리된 작업 패키지를 제공합니다.</p>
+        </section>
+      );
+    }
+
     if (activeStep === "render") {
       return (
         <section className={styles.stageCard}>
-          <div className={styles.stageHeading}><div><span>STEP 08</span><h2>선별 장면·최종 MP4</h2></div><strong>{finalVideoUrl ? "완성" : "제작 전"}</strong></div>
+          <div className={styles.stageHeading}><div><span>STEP 09</span><h2>선별 장면·최종 MP4</h2></div><strong>{finalVideoUrl ? "완성" : "제작 전"}</strong></div>
           <div className={styles.engineFlow}>
             <span>상품 사진</span><i>→</i><span>AI 장면</span><i>→</i><span>Runway 영상</span><i>→</i><span>음성·자막·음악</span><i>→</i><span>9:16 MP4</span>
           </div>
@@ -1544,7 +1992,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
 
     return (
       <section className={styles.stageCard}>
-        <div className={styles.stageHeading}><div><span>STEP 09</span><h2>검수·비공개 게시</h2></div><strong>{publishQueued ? "대기열 등록" : "대표 승인 필요"}</strong></div>
+        <div className={styles.stageHeading}><div><span>STEP 10</span><h2>검수·비공개 게시</h2></div><strong>{publishQueued ? "대기열 등록" : "대표 승인 필요"}</strong></div>
         {finalVideoUrl ? <video className={styles.publishVideo} controls playsInline src={finalVideoUrl} /> : <p className={styles.helper}>최종 MP4가 완성되면 이 화면에서 확인할 수 있습니다.</p>}
         <div className={styles.publishChecklist}>
           <span>첫 2초 훅</span><span>상품 형태</span><span>한국어 자막</span><span>음성·음악 밸런스</span><span>제휴 고지</span><span>썸네일</span>
@@ -1552,6 +2000,52 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
         <button className={styles.primary} type="button" onClick={() => void queuePrivateYouTube()} disabled={Boolean(busy) || !finalVideoUrl || publishQueued}>
           {publishQueued ? "YouTube 비공개 대기열 등록 완료" : busy === "publish" ? "게시 대기열 등록 중..." : "YouTube 비공개 게시 대기열 등록"}
         </button>
+
+        <div className={styles.learningEnginePanel}>
+          <div className={styles.learningHead}>
+            <div><span>PHASE 5</span><h3>게시 성과·클릭·판매 학습 엔진</h3></div>
+            <strong>{learningData.lastUpdatedAt ? "학습 데이터 있음" : "학습 전"}</strong>
+          </div>
+          <div className={styles.learningSummaryGrid}>
+            <article><span>조회수</span><strong>{learningData.views.toLocaleString("ko-KR")}</strong></article>
+            <article><span>클릭</span><strong>{learningData.clicks.toLocaleString("ko-KR")}</strong></article>
+            <article><span>주문</span><strong>{learningData.orders.toLocaleString("ko-KR")}</strong></article>
+            <article><span>매출</span><strong>{learningData.revenue.toLocaleString("ko-KR")}원</strong></article>
+          </div>
+
+          <div className={styles.learningFormGrid}>
+            <label>채널<select value={learningData.sourceChannel} onChange={(event: ChangeEvent<HTMLSelectElement>) => updateLearningField("sourceChannel", event.target.value as LearningEngineData["sourceChannel"])}><option value="youtube">YouTube</option><option value="instagram">Instagram</option><option value="manual">수동 입력</option></select></label>
+            <label>게시일<input type="datetime-local" value={learningData.publishedAt ? new Date(learningData.publishedAt).toISOString().slice(0, 16) : ""} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("publishedAt", event.target.value ? new Date(event.target.value).toISOString() : "")} /></label>
+            <label>훅 스타일<input value={learningData.hookStyle} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("hookStyle", event.target.value)} /></label>
+            <label>썸네일 스타일<input value={learningData.thumbnailStyle} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("thumbnailStyle", event.target.value)} /></label>
+            <label>조회수<input type="number" min="0" value={learningData.views} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("views", Number(event.target.value))} /></label>
+            <label>노출수<input type="number" min="0" value={learningData.impressions} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("impressions", Number(event.target.value))} /></label>
+            <label>CTR(%)<input type="number" min="0" step="0.1" value={learningData.ctr} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("ctr", Number(event.target.value))} /></label>
+            <label>평균 시청률(%)<input type="number" min="0" step="0.1" value={learningData.averageViewPercent} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("averageViewPercent", Number(event.target.value))} /></label>
+            <label>링크 클릭<input type="number" min="0" value={learningData.clicks} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("clicks", Number(event.target.value))} /></label>
+            <label>주문수<input type="number" min="0" value={learningData.orders} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("orders", Number(event.target.value))} /></label>
+            <label>매출(원)<input type="number" min="0" value={learningData.revenue} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("revenue", Number(event.target.value))} /></label>
+            <label>광고·제작 비용(원)<input type="number" min="0" value={learningData.spend} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("spend", Number(event.target.value))} /></label>
+            <label>저장률(%)<input type="number" min="0" step="0.1" value={learningData.saveRate} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("saveRate", Number(event.target.value))} /></label>
+            <label>공유율(%)<input type="number" min="0" step="0.1" value={learningData.shareRate} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("shareRate", Number(event.target.value))} /></label>
+          </div>
+
+          <div className={styles.insightList}>
+            {hydrateLearningData(learningData).insights.map((item, index) => (
+              <article key={`${item.area}-${index}`}>
+                <b>{item.area}</b>
+                <strong>{item.summary}</strong>
+                <p>{item.action}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className={styles.phaseActions}>
+            <button className={styles.subtle} type="button" onClick={downloadLearningReport}>학습 리포트 다운로드</button>
+            <button className={styles.primary} type="button" onClick={() => void saveLearningEngine()} disabled={Boolean(busy) || !projectId}>{busy === "learning-save" ? "저장 중..." : "학습 엔진 저장"}</button>
+          </div>
+        </div>
+
         <div className={styles.internalLinks}>
           <Link href="/admin/publishing">게시센터 확인</Link>
           <Link href="/admin/analytics">조회수·클릭 분석</Link>
@@ -1565,9 +2059,9 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
     <main className={styles.shell}>
       <header className={styles.hero}>
         <div>
-          <span>GY SHOPPING SHORTS CANVAS · PHASE 1</span>
+          <span>GY SHOPPING SHORTS CANVAS · PHASE 5</span>
           <h1>쇼핑 쇼츠 AI 제작 캔버스</h1>
-          <p>상품 하나를 기준으로 대본·사진·내 영상 Gemini 선별·음성·음악·자막·최종 MP4까지 한 프로젝트 안에서 이어서 제작합니다.</p>
+          <p>상품 하나를 기준으로 대본·사진·내 영상 Gemini 선별·음성·음악·미리캔버스 썸네일·최종 MP4·게시 성과 학습까지 한 프로젝트 안에서 이어서 제작합니다.</p>
         </div>
         <div className={styles.heroSide}>
           <div className={styles.progressRing}><strong>{progressPercent}%</strong><span>{completedCount}/{steps.length} 완료</span></div>
@@ -1632,8 +2126,10 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
             <div><b>Gemini</b><span>내 영상 분석·좋은 구간 선별</span></div>
             <div><b>OpenAI</b><span>이미지·음성·품질검수</span></div>
             <div><b>Runway</b><span>장면 영상 생성</span></div>
+            <div><b>MiriCanvas</b><span>썸네일 마무리 패키지</span></div>
             <div><b>Video Worker</b><span>음성·자막·MP4 합성</span></div>
             <div><b>YouTube</b><span>비공개 게시 대기</span></div>
+            <div><b>Learning Engine</b><span>조회·클릭·판매 학습</span></div>
           </div>
           {factoryResult && (
             <div className={styles.miniSummary}>
@@ -1641,6 +2137,8 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
               <strong>{factoryResult.shorts.hook}</strong>
               <small>SEO</small>
               <p>{factoryResult.seo.primaryKeyword}</p>
+              <small>학습 메모</small>
+              <p>{learningData.insights[0]?.summary || "성과 데이터가 쌓이면 다음 훅과 썸네일 방향을 자동 추천합니다."}</p>
             </div>
           )}
         </aside>
