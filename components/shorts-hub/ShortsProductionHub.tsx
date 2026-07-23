@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { createClient } from "@supabase/supabase-js";
 import { useMemo, useState, type ChangeEvent } from "react";
 import type { ContentFactoryPackage } from "@/lib/content-factory/types";
 import styles from "./ShortsProductionHub.module.css";
@@ -8,7 +9,7 @@ import styles from "./ShortsProductionHub.module.css";
 type Mode = "manual" | "guided" | "auto";
 type SourceStrategy = "korean-original" | "china-reference" | "single-photo";
 type VoicePreset = "marin" | "coral" | "shimmer" | "cedar" | "onyx" | "echo";
-type StepKey = "product" | "strategy" | "assets" | "project" | "scenes" | "voice" | "render" | "publish";
+type StepKey = "product" | "strategy" | "assets" | "project" | "analysis" | "scenes" | "voice" | "render" | "publish";
 type StepState = "waiting" | "running" | "done" | "error";
 
 type CanvasStep = {
@@ -98,6 +99,49 @@ type AudioTimeline = {
   sfxCues?: SfxCue[];
 };
 
+
+type GeminiSelectedCut = {
+  order: number;
+  frameIndex: number;
+  sourceStartSecond: number;
+  sourceEndSecond: number;
+  durationSeconds: number;
+  score: number;
+  role: string;
+  reason: string;
+  subtitleSuggestion: string;
+};
+
+type GeminiMediaAnalysis = {
+  summary: string;
+  productMatchScore: number;
+  visualQualityScore: number;
+  bestHookTimestamp: number;
+  recommendedCuts: GeminiSelectedCut[];
+  rejectedMoments: string[];
+  warnings: string[];
+  model: string;
+  analyzedAt: string;
+};
+
+type MediaAnalysisAsset = {
+  id: string;
+  name: string;
+  url: string;
+  path?: string;
+  mimeType: string;
+  sizeBytes: number;
+  rightsStatus: "owned";
+  status: "uploaded" | "queued" | "extracting" | "analyzing" | "completed" | "failed";
+  frameUrls: string[];
+  frameTimestamps: number[];
+  durationSeconds: number | null;
+  analysis?: GeminiMediaAnalysis;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type ProjectRecord = {
   id: string;
   title: string;
@@ -109,6 +153,8 @@ type ProjectRecord = {
     audioTimeline?: AudioTimeline;
     audioAssets?: AudioAsset[];
     voiceAudioUrl?: string | null;
+    mediaAnalysisAssets?: MediaAnalysisAsset[];
+    geminiSelectedAssetId?: string;
   } | null;
 };
 
@@ -140,12 +186,13 @@ type ProjectResponse = {
 const initialSteps: CanvasStep[] = [
   { key: "product", number: "01", label: "상품", description: "제휴링크·상품정보", state: "waiting", detail: "" },
   { key: "strategy", number: "02", label: "키워드·대본", description: "훅·대본·SEO", state: "waiting", detail: "" },
-  { key: "assets", number: "03", label: "소재", description: "상품 사진 업로드", state: "waiting", detail: "" },
-  { key: "project", number: "04", label: "프로젝트", description: "장면·썸네일 기획", state: "waiting", detail: "" },
-  { key: "scenes", number: "05", label: "장면", description: "AI 이미지 품질검수", state: "waiting", detail: "" },
-  { key: "voice", number: "06", label: "음성·음악", description: "한국어 음성·효과음", state: "waiting", detail: "" },
-  { key: "render", number: "07", label: "영상 합성", description: "Runway·최종 MP4", state: "waiting", detail: "" },
-  { key: "publish", number: "08", label: "게시", description: "YouTube 비공개 대기", state: "waiting", detail: "" },
+  { key: "assets", number: "03", label: "상품 사진", description: "상품 정체성 소재", state: "waiting", detail: "" },
+  { key: "project", number: "04", label: "프로젝트", description: "제작 기준 저장", state: "waiting", detail: "" },
+  { key: "analysis", number: "05", label: "Gemini 소재", description: "내 영상 자동 선별", state: "waiting", detail: "" },
+  { key: "scenes", number: "06", label: "장면", description: "선별 컷·AI 장면", state: "waiting", detail: "" },
+  { key: "voice", number: "07", label: "음성·음악", description: "문장 음성·효과음", state: "waiting", detail: "" },
+  { key: "render", number: "08", label: "영상 합성", description: "최종 MP4", state: "waiting", detail: "" },
+  { key: "publish", number: "09", label: "게시", description: "YouTube 비공개 대기", state: "waiting", detail: "" },
 ];
 
 function safeFileName(value: string) {
@@ -223,6 +270,9 @@ export default function ShortsProductionHub() {
     licenseNote: "",
   });
   const [sfxCues, setSfxCues] = useState<SfxCue[]>([]);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [mediaRightsConfirmed, setMediaRightsConfirmed] = useState(false);
+  const [mediaAssets, setMediaAssets] = useState<MediaAnalysisAsset[]>([]);
 
   const [projectId, setProjectId] = useState("");
   const [projectDetail, setProjectDetail] = useState<ProjectRecord | null>(null);
@@ -407,6 +457,126 @@ export default function ShortsProductionHub() {
       setMessage("선택한 문장의 음성만 다시 생성했습니다.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "문장 음성 재생성 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function updateMediaCut(assetId: string, order: number, patch: Partial<GeminiSelectedCut>) {
+    setMediaAssets((current) => current.map((asset) => asset.id !== assetId || !asset.analysis ? asset : {
+      ...asset,
+      analysis: {
+        ...asset.analysis,
+        recommendedCuts: asset.analysis.recommendedCuts.map((cut) => cut.order === order ? { ...cut, ...patch } : cut),
+      },
+    }));
+  }
+
+  async function refreshMediaAssets(id = projectId) {
+    if (!id) return [] as MediaAnalysisAsset[];
+    const data = await jsonRequest<{ success?: boolean; assets?: MediaAnalysisAsset[] }>(
+      `/api/creative-studio-pro/projects/${id}/media-analysis`,
+      { cache: "no-store" },
+    );
+    const assets = Array.isArray(data.assets) ? data.assets : [];
+    setMediaAssets(assets);
+    return assets;
+  }
+
+  async function pollMediaAnalysis(id: string, assetId: string) {
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      const assets = await refreshMediaAssets(id);
+      const asset = assets.find((item) => item.id === assetId);
+      if (asset?.status === "completed") {
+        markStep("analysis", "done", `Gemini 추천 컷 ${asset.analysis?.recommendedCuts.length || 0}개`);
+        setMessage("Gemini가 내 영상에서 훅·사용·디테일·CTA 구간을 자동 선별했습니다.");
+        setActiveStep("scenes");
+        return asset;
+      }
+      if (asset?.status === "failed") throw new Error(asset.error || "Gemini 소재 분석 실패");
+      setMessage(asset?.status === "analyzing"
+        ? "Gemini가 제품 노출·움직임·화질·첫 2초 훅을 분석하고 있습니다."
+        : "영상 Worker가 프레임과 정확한 시간정보를 추출하고 있습니다.");
+      await sleep(attempt === 0 ? 1200 : 4000);
+    }
+    throw new Error("소재 분석이 오래 걸리고 있습니다. 완료된 데이터는 프로젝트에 저장됩니다.");
+  }
+
+  async function analyzeOwnedVideoCore(id: string, file: File) {
+    if (!mediaRightsConfirmed) throw new Error("직접 촬영했거나 사용 권한이 있는 영상인지 확인해주세요.");
+    if (!file.type.startsWith("video/")) throw new Error("분석할 영상 파일을 선택해주세요.");
+    markStep("analysis", "running");
+    setMessage("내 영상을 Supabase 저장소에 직접 업로드하고 있습니다.");
+
+    const upload = await jsonRequest<{
+      success?: boolean; bucket: string; path: string; token: string; signedUrl?: string; publicUrl: string; supabaseUrl?: string; anonKey?: string;
+    }>(`/api/creative-studio-pro/projects/${id}/media-upload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: file.name, mimeType: file.type, sizeBytes: file.size }),
+    });
+
+    if (upload.supabaseUrl && upload.anonKey && upload.token) {
+      const client = createClient(upload.supabaseUrl, upload.anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+      const { error: uploadError } = await client.storage.from(upload.bucket).uploadToSignedUrl(upload.path, upload.token, file, { contentType: file.type });
+      if (uploadError) throw uploadError;
+    } else if (upload.signedUrl) {
+      const response = await fetch(upload.signedUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      if (!response.ok) throw new Error(`영상 직접 업로드 실패: ${response.status}`);
+    } else {
+      throw new Error("Supabase 영상 업로드 연결값을 받지 못했습니다.");
+    }
+
+    const queued = await jsonRequest<{ success?: boolean; asset?: MediaAnalysisAsset }>(
+      `/api/creative-studio-pro/projects/${id}/media-analysis`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, url: upload.publicUrl, path: upload.path, mimeType: file.type, sizeBytes: file.size }),
+      },
+    );
+    if (!queued.asset?.id) throw new Error("Gemini 소재 분석 작업 ID를 받지 못했습니다.");
+    setMediaAssets((current) => [...current.filter((item) => item.id !== queued.asset?.id), queued.asset as MediaAnalysisAsset]);
+    return pollMediaAnalysis(id, queued.asset.id);
+  }
+
+  async function analyzeOwnedVideo() {
+    if (!projectId || !videoFile || busy) {
+      if (!projectId) setError("먼저 영상 프로젝트를 만들어주세요.");
+      else if (!videoFile) setError("분석할 내 영상 파일을 선택해주세요.");
+      return;
+    }
+    setBusy("analysis");
+    setError("");
+    try {
+      await analyzeOwnedVideoCore(projectId, videoFile);
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "Gemini 소재 분석 실패";
+      setError(reason);
+      markStep("analysis", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveGeminiCuts(asset: MediaAnalysisAsset) {
+    if (!projectId || !asset.analysis || busy) return;
+    setBusy("analysis-save");
+    setError("");
+    try {
+      const data = await jsonRequest<{ success?: boolean; asset?: MediaAnalysisAsset }>(
+        `/api/creative-studio-pro/projects/${projectId}/media-analysis`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assetId: asset.id, cuts: asset.analysis.recommendedCuts }),
+        },
+      );
+      if (data.asset) setMediaAssets((current) => current.map((item) => item.id === data.asset?.id ? data.asset as MediaAnalysisAsset : item));
+      markStep("analysis", "done", `Gemini 추천 컷 ${data.asset?.analysis?.recommendedCuts.length || asset.analysis.recommendedCuts.length}개 저장`);
+      setMessage("수정한 Gemini 추천 컷을 최종 편집 타임라인에 저장했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Gemini 추천 컷 저장 실패");
     } finally {
       setBusy("");
     }
@@ -696,8 +866,8 @@ export default function ShortsProductionHub() {
     setProjectDetail(latest.project || data.project);
     setProjectScenes(Array.isArray(latest.scenes) ? latest.scenes : data.scenes || []);
     markStep("project", "done", `${sceneCount}개 장면 프로젝트 생성`);
-    setMessage("프로젝트가 저장됐습니다. 이제 장면 이미지를 만들고 품질을 검사합니다.");
-    setActiveStep("scenes");
+    setMessage("프로젝트가 저장됐습니다. 내 영상이 있다면 Gemini가 좋은 구간을 자동 선별합니다.");
+    setActiveStep("analysis");
     return { id, sceneCount };
   }
 
@@ -720,6 +890,13 @@ export default function ShortsProductionHub() {
   }
 
   async function prepareScenesCore(id: string, sceneCount: number) {
+    const selectedOwnedVideo = mediaAssets.find((asset) => asset.status === "completed" && asset.analysis?.recommendedCuts.length);
+    if (selectedOwnedVideo) {
+      markStep("scenes", "done", `Gemini 선별 원본 컷 ${selectedOwnedVideo.analysis?.recommendedCuts.length || 0}개 사용`);
+      setMessage("Gemini가 선별한 내 영상 컷을 사용하므로 불필요한 AI 장면 생성을 건너뜁니다.");
+      setActiveStep("voice");
+      return;
+    }
     markStep("scenes", "running");
     for (let index = 0; index < sceneCount * 3 + 2; index += 1) {
       const result = await jsonRequest<{ done?: boolean; message?: string }>(
@@ -817,16 +994,21 @@ export default function ShortsProductionHub() {
 
     await jsonRequest(`/api/creative-studio-pro/projects/${id}/approve-render`, { method: "POST" });
 
-    for (let index = 0; index < sceneCount + 2; index += 1) {
-      const result = await jsonRequest<{ done?: boolean; message?: string }>(
-        `/api/creative-studio-pro/projects/${id}/generate-next`,
-        { method: "POST" },
-      );
-      setMessage(result.message || `Runway 장면 ${Math.min(index + 1, sceneCount)}개를 생성하고 있습니다.`);
-      if (result.done) break;
+    const usesGeminiOwnedCuts = mediaAssets.some((asset) => asset.status === "completed" && asset.analysis?.recommendedCuts.length);
+    if (usesGeminiOwnedCuts) {
+      setMessage("Gemini가 선별한 내 영상 원본 컷을 사용해 Runway 비용 없이 최종 합성을 준비합니다.");
+    } else {
+      for (let index = 0; index < sceneCount + 2; index += 1) {
+        const result = await jsonRequest<{ done?: boolean; message?: string }>(
+          `/api/creative-studio-pro/projects/${id}/generate-next`,
+          { method: "POST" },
+        );
+        setMessage(result.message || `Runway 장면 ${Math.min(index + 1, sceneCount)}개를 생성하고 있습니다.`);
+        if (result.done) break;
+      }
     }
 
-    setMessage("음성·자막·장면·음악을 최종 세로 MP4로 합성합니다.");
+    setMessage("음성·자막·선별 장면·음악을 최종 세로 MP4로 합성합니다.");
     await jsonRequest(`/api/creative-studio-pro/projects/${id}/render`, { method: "POST" });
     const completed = await pollProject(id);
     const videoUrl = completed.project?.final_video_url || "";
@@ -930,7 +1112,7 @@ ${commerce.cta || "상품 링크에서 자세히 확인하세요."}`.trim(),
     const confirmed = window.confirm(
       `${productName}
 
-대본·이미지·음성·Runway·최종 MP4까지 자동 제작할까요?
+대본·이미지·Gemini 내 영상 선별·음성·최종 MP4까지 자동 제작할까요?
 AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인이 필요합니다.`,
     );
     if (!confirmed) return;
@@ -946,6 +1128,8 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
         ? { id: projectId, sceneCount: Math.max(1, projectScenes.length || Math.ceil(duration / 5)) }
         : await createProjectCore(result, references);
 
+      if (videoFile && mediaRightsConfirmed) await analyzeOwnedVideoCore(created.id, videoFile);
+      else { markStep("analysis", "done", "내 영상 없음 · AI 장면 제작"); }
       await prepareScenesCore(created.id, created.sceneCount);
       const automaticSegments = voiceSegments.length ? voiceSegments : makeVoiceSegments(result);
       await generateVoiceCore(created.id, automaticSegments);
@@ -1009,6 +1193,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       strategy: "첫 2초 훅과 대본을 만든 뒤 대표님 말투에 맞게 수정하세요. 수정한 대본은 프로젝트 제작 지시문에 들어갑니다.",
       assets: "실제 상품 사진은 최소 1장, 가능하면 서로 다른 각도 2~4장이 좋습니다. 상품 형태 정확도가 올라갑니다.",
       project: "한국형 직접 제작 또는 중국 인기 구조 참고 방식을 선택하고 프로젝트를 생성하세요.",
+      analysis: "직접 촬영하거나 사용 권한이 있는 영상을 올리면 Gemini가 첫 2초 훅·사용·디테일·CTA 구간을 자동 선별합니다.",
       scenes: "AI가 상품 장면을 만들고 85점 기준으로 자동 검수합니다. 불량 장면만 다시 생성할 수 있는 기반입니다.",
       voice: "문장별 목소리·속도·연기를 수정하고, YouTube 오디오 라이브러리 음악과 효과음을 타임라인에 배치하세요.",
       render: "Runway 사용량이 발생할 수 있습니다. 장면과 음성을 확인한 뒤 최종 MP4 제작을 승인하세요.",
@@ -1139,10 +1324,68 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       );
     }
 
+    if (activeStep === "analysis") {
+      const completed = mediaAssets.filter((asset) => asset.status === "completed");
+      return (
+        <section className={styles.stageCard}>
+          <div className={styles.stageHeading}><div><span>STEP 05</span><h2>Gemini 소재 분석·내 영상 자동 선별</h2></div><strong>{completed.length ? `${completed.length}개 분석 완료` : "분석 전"}</strong></div>
+          <p className={styles.helper}>직접 촬영하거나 사용 권한이 있는 영상을 올리면 제품 노출, 흔들림, 동작, 첫 2초 훅을 Gemini가 분석해 사용할 구간만 자동 선택합니다.</p>
+          <label className={styles.uploadBox}>
+            <input type="file" accept="video/mp4,video/webm,video/quicktime" onChange={(event: ChangeEvent<HTMLInputElement>) => setVideoFile(event.target.files?.[0] || null)} />
+            <span>{videoFile ? videoFile.name : "MP4·WEBM·MOV 내 영상 선택"}</span>
+            <small>500MB 이하 · 영상은 Supabase에 직접 업로드되어 Vercel 용량 제한을 피합니다.</small>
+          </label>
+          <label className={styles.rightsConfirm}><input type="checkbox" checked={mediaRightsConfirmed} onChange={(event: ChangeEvent<HTMLInputElement>) => setMediaRightsConfirmed(event.target.checked)} /><span>이 영상은 제가 직접 촬영했거나 최종 쇼츠에 사용할 권한이 있습니다.</span></label>
+          <div className={styles.phaseActions}>
+            <button type="button" className={styles.subtle} onClick={() => { markStep("analysis", "done", "내 영상 없음 · AI 장면 제작"); moveTo("scenes"); }}>내 영상 없이 계속</button>
+            <button type="button" className={styles.primary} onClick={() => void analyzeOwnedVideo()} disabled={Boolean(busy) || !videoFile || !mediaRightsConfirmed || !projectId}>
+              {busy === "analysis" ? "프레임 추출·Gemini 분석 중..." : "내 영상 업로드·자동 선별"}
+            </button>
+          </div>
+          <div className={styles.mediaAnalysisList}>
+            {mediaAssets.map((asset) => (
+              <article className={styles.mediaAnalysisCard} key={asset.id}>
+                <div className={styles.mediaCardHead}>
+                  <div><span>{asset.status.toUpperCase()}</span><h3>{asset.name}</h3></div>
+                  <strong>{asset.durationSeconds ? `${asset.durationSeconds.toFixed(1)}초` : "처리 중"}</strong>
+                </div>
+                <video src={asset.url} controls preload="metadata" />
+                {asset.error && <p className={styles.assetError}>{asset.error}</p>}
+                {asset.analysis && (
+                  <div className={styles.geminiResult}>
+                    <div className={styles.scoreGrid}>
+                      <div><span>상품 일치</span><strong>{asset.analysis.productMatchScore}점</strong></div>
+                      <div><span>화면 품질</span><strong>{asset.analysis.visualQualityScore}점</strong></div>
+                      <div><span>최강 훅</span><strong>{asset.analysis.bestHookTimestamp.toFixed(1)}초</strong></div>
+                    </div>
+                    <p>{asset.analysis.summary}</p>
+                    <div className={styles.cutTimeline}>
+                      {asset.analysis.recommendedCuts.map((cut) => (
+                        <div key={`${asset.id}-${cut.order}`}>
+                          <b>컷 {cut.order}</b>
+                          <label>시작<input type="number" min="0" step="0.1" value={cut.sourceStartSecond} onChange={(event: ChangeEvent<HTMLInputElement>) => updateMediaCut(asset.id, cut.order, { sourceStartSecond: Number(event.target.value) })} /></label>
+                          <label>종료<input type="number" min="0.7" step="0.1" value={cut.sourceEndSecond} onChange={(event: ChangeEvent<HTMLInputElement>) => updateMediaCut(asset.id, cut.order, { sourceEndSecond: Number(event.target.value) })} /></label>
+                          <label>역할<input value={cut.role} onChange={(event: ChangeEvent<HTMLInputElement>) => updateMediaCut(asset.id, cut.order, { role: event.target.value })} /></label>
+                          <label>자막<input value={cut.subtitleSuggestion} onChange={(event: ChangeEvent<HTMLInputElement>) => updateMediaCut(asset.id, cut.order, { subtitleSuggestion: event.target.value })} /></label>
+                          <span>{cut.score}점 · {cut.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {asset.analysis.warnings.length > 0 && <div className={styles.warningList}>{asset.analysis.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
+                    <button type="button" className={styles.primary} onClick={() => void saveGeminiCuts(asset)} disabled={Boolean(busy)}>수정한 추천 컷을 최종 타임라인에 저장</button>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
     if (activeStep === "scenes") {
       return (
         <section className={styles.stageCard}>
-          <div className={styles.stageHeading}><div><span>STEP 05</span><h2>AI 장면·품질검수</h2></div><strong>{projectScenes.length}개 장면</strong></div>
+          <div className={styles.stageHeading}><div><span>STEP 06</span><h2>선별 컷·AI 장면</h2></div><strong>{projectScenes.length}개 장면</strong></div>
           <div className={styles.sceneList}>
             {projectScenes.length ? projectScenes.map((scene, index) => (
               <div key={scene.id || index}>
@@ -1165,7 +1408,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       return (
         <section className={styles.stageCard}>
           <div className={styles.stageHeading}>
-            <div><span>STEP 06 · PHASE 2</span><h2>음성·음악·효과음 타임라인</h2></div>
+            <div><span>STEP 07 · PHASE 3</span><h2>음성·음악·효과음 타임라인</h2></div>
             <strong>{voiceSegments.filter((segment) => segment.audioUrl).length}/{voiceSegments.length} 문장 음성</strong>
           </div>
 
@@ -1282,7 +1525,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
     if (activeStep === "render") {
       return (
         <section className={styles.stageCard}>
-          <div className={styles.stageHeading}><div><span>STEP 07</span><h2>Runway 장면·최종 MP4</h2></div><strong>{finalVideoUrl ? "완성" : "제작 전"}</strong></div>
+          <div className={styles.stageHeading}><div><span>STEP 08</span><h2>선별 장면·최종 MP4</h2></div><strong>{finalVideoUrl ? "완성" : "제작 전"}</strong></div>
           <div className={styles.engineFlow}>
             <span>상품 사진</span><i>→</i><span>AI 장면</span><i>→</i><span>Runway 영상</span><i>→</i><span>음성·자막·음악</span><i>→</i><span>9:16 MP4</span>
           </div>
@@ -1301,7 +1544,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
 
     return (
       <section className={styles.stageCard}>
-        <div className={styles.stageHeading}><div><span>STEP 08</span><h2>검수·비공개 게시</h2></div><strong>{publishQueued ? "대기열 등록" : "대표 승인 필요"}</strong></div>
+        <div className={styles.stageHeading}><div><span>STEP 09</span><h2>검수·비공개 게시</h2></div><strong>{publishQueued ? "대기열 등록" : "대표 승인 필요"}</strong></div>
         {finalVideoUrl ? <video className={styles.publishVideo} controls playsInline src={finalVideoUrl} /> : <p className={styles.helper}>최종 MP4가 완성되면 이 화면에서 확인할 수 있습니다.</p>}
         <div className={styles.publishChecklist}>
           <span>첫 2초 훅</span><span>상품 형태</span><span>한국어 자막</span><span>음성·음악 밸런스</span><span>제휴 고지</span><span>썸네일</span>
@@ -1324,7 +1567,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
         <div>
           <span>GY SHOPPING SHORTS CANVAS · PHASE 1</span>
           <h1>쇼핑 쇼츠 AI 제작 캔버스</h1>
-          <p>상품 하나를 기준으로 대본·사진·장면·음성·음악·자막·최종 MP4·비공개 게시까지 한 프로젝트 안에서 이어서 제작합니다.</p>
+          <p>상품 하나를 기준으로 대본·사진·내 영상 Gemini 선별·음성·음악·자막·최종 MP4까지 한 프로젝트 안에서 이어서 제작합니다.</p>
         </div>
         <div className={styles.heroSide}>
           <div className={styles.progressRing}><strong>{progressPercent}%</strong><span>{completedCount}/{steps.length} 완료</span></div>
@@ -1386,6 +1629,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
           <p>{advisorText}</p>
           <div className={styles.engineStatus}>
             <div><b>Dream Y</b><span>대본·판매 구조</span></div>
+            <div><b>Gemini</b><span>내 영상 분석·좋은 구간 선별</span></div>
             <div><b>OpenAI</b><span>이미지·음성·품질검수</span></div>
             <div><b>Runway</b><span>장면 영상 생성</span></div>
             <div><b>Video Worker</b><span>음성·자막·MP4 합성</span></div>
