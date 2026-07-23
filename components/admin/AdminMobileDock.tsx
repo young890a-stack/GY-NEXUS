@@ -6,10 +6,10 @@ import GyIcon from "./GyIcon";
 
 const items = [
   { href: "/admin", label: "홈", icon: "command" },
-  { href: "/admin/revenue-shorts", label: "쇼츠", icon: "play" },
-  { href: "/admin/mobile-auto-shorts", label: "원클릭", icon: "zap" },
+  { href: "/admin/shorts-hub", label: "쇼츠", icon: "play" },
   { href: "/admin/content-factory", label: "블로그", icon: "factory" },
   { href: "/admin/products", label: "상품", icon: "box" },
+  { href: "/admin/connections", label: "연결", icon: "link" },
 ];
 
 function activePath(pathname: string, href: string) {
@@ -20,22 +20,11 @@ function activePath(pathname: string, href: string) {
 
 export default function AdminMobileDock() {
   const pathname = usePathname();
-
   return (
-    <nav className="admin-mobile-dock" aria-label="모바일 핵심 메뉴">
+    <nav className="admin-mobile-dock" aria-label="모바일 빠른 메뉴">
       {items.map((item) => {
         const active = activePath(pathname, item.href);
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={active ? "active" : undefined}
-            aria-current={active ? "page" : undefined}
-          >
-            <GyIcon name={item.icon} />
-            <span>{item.label}</span>
-          </Link>
-        );
+        return <Link key={item.href} href={item.href} className={active ? "active" : undefined} aria-current={active ? "page" : undefined}><GyIcon name={item.icon} /><span>{item.label}</span></Link>;
       })}
     </nav>
   );

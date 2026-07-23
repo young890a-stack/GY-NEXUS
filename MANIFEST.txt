@@ -1,0 +1,16 @@
+GY-NEXUS Korean Shorts Studio V1
+
+Embedded target files:
+- .gitignore
+- lib/korean-shorts/types.ts
+- lib/korean-shorts/fallback.ts
+- app/api/korean-shorts/generate/route.ts
+- app/admin/korean-shorts/page.tsx
+- components/korean-shorts/KoreanShortsStudio.tsx
+- components/korean-shorts/KoreanShortsStudio.module.css
+- components/admin/AdminSidebar.tsx
+- components/admin/AdminMobileDock.tsx
+- app/admin/mobile-auto-shorts/page.tsx
+- app/admin/revenue-shorts/page.tsx
+
+Safety: backup + production build + automatic rollback

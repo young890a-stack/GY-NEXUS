@@ -1,0 +1,35 @@
+{
+  "name": "GY-NEXUS Korean Shorts Studio V2 Fix",
+  "write_files": [
+    {
+      "path": "app/admin/korean-shorts/page.tsx",
+      "sha256": "28221a061d48b597defe207bcf06c0217a4cdafe7af64f2d9fd577d91915b113"
+    },
+    {
+      "path": "components/korean-shorts/KoreanShortsStudio.tsx",
+      "sha256": "8a78e14786809ed06a364df4082a9888124848796d7c04fb452d003e375c2682"
+    },
+    {
+      "path": "components/korean-shorts/KoreanShortsStudio.module.css",
+      "sha256": "6b8f41e5fca010007920c24f8d0fce62ba5bd1796114c8343b383d77ed6ed4b8"
+    },
+    {
+      "path": "components/admin/AdminSidebar.tsx",
+      "sha256": "61be88eb4f03ad98a8efb1e1d2e3de989f95f661a8b0dfba73b8418e85868a00"
+    },
+    {
+      "path": "components/admin/AdminMobileDock.tsx",
+      "sha256": "f2c5a835297d34224b2deaf4574c2c366fcebe7d004a08f764508eb80a493932"
+    }
+  ],
+  "delete_legacy_files": [
+    "app/api/korean-shorts/generate/route.ts",
+    "lib/korean-shorts/types.ts",
+    "lib/korean-shorts/fallback.ts"
+  ],
+  "validation": [
+    "TypeScript/TSX syntax transpile: passed",
+    "CSS module class references: passed",
+    "Installer rollback loop: fixed"
+  ]
+}
