@@ -224,6 +224,27 @@ function removeUnsupportedAccessClaims(value: string) {
     .trim();
 }
 
+function neutralizeUnsupportedModifiers(value: string) {
+  return removeUnsupportedAccessClaims(value)
+    .replace(/充电与电量更直观/gi, "充电状态与电量显示")
+    .replace(/更(?:加)?直观/gi, "状态显示")
+    .replace(/更(?:加)?清晰/gi, "信息显示")
+    .replace(/更(?:加)?方便/gi, "可查看")
+    .replace(/内置(?=\s*\d+\s*mAh)/gi, "")
+    .replace(/더\s*직관적(?:으로|인)?/gi, "상태 표시")
+    .replace(/더\s*(?:욱\s*)?편리(?:하게|한)?/gi, "확인 가능한")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+const chineseAffiliateDisclosure = "本内容含联盟营销链接，如通过链接购买，我们可能获得佣金。";
+
+function ensureChineseAffiliateDisclosure(value: string) {
+  const text = neutralizeUnsupportedModifiers(value);
+  if (/联盟营销|联盟链接|佣金|推广合作/.test(text)) return text;
+  return `${text}${text ? "\n" : ""}${chineseAffiliateDisclosure}`;
+}
+
 export function createExactSubtitleCues(script: string, durationSeconds: number) {
   const words = script.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
   if (!words.length) return [];
@@ -295,6 +316,7 @@ export async function generateCommercePackage(input: {
           `독창적 판매 각도: ${(input.trendIntelligence?.sellingAngles || []).join(" / ") || "없음"}`,
           "대상은 한국의 20~40대다. 첫 2초에 구체적인 문제 또는 결과를 제시한다.",
           "상품 설명에서 확인된 사실만 장점으로 말하고 가격, 할인율, 성능 수치나 사용 후기를 추측하지 않는다.",
+          "검증 사실에 없는 '내장', '더 직관적', '더 편리', '더 선명' 같은 관계·비교·체감 표현을 추가하지 않는다. 중국어에서도 内置, 更直观, 更方便 같은 단어를 사실 목록에 없으면 쓰지 않는다.",
           "판매 페이지나 제휴 링크가 제공되었다는 사실을 verifiedClaims에 넣지 않는다. verifiedClaims에는 위 검증된 상품 사실 목록의 문장만 그대로 사용한다.",
           "직접 사용하지 않았다면 직접 써봤다는 표현을 금지한다. 상품 특징 소개의 관점으로 작성한다.",
           `voiceover는 선택형 훅을 제외한 본문 대본이다. 가장 긴 hookOptions 하나와 합친 전체 한국어 대본이 ${input.durationSeconds}초 안에 자연스럽게 읽히도록 충분히 짧게 작성한다.`,
@@ -303,6 +325,7 @@ export async function generateCommercePackage(input: {
           "description에는 상품 요약과 제휴 고지를 포함한다. 해시태그는 실제 상품과 관련된 것만 작성한다.",
           "YouTube·Instagram용 한국어 버전, Douyin용 자연스러운 중국어 간체 버전, Xiaohongshu용 6~9장 사진 노트를 각각 만든다.",
           "중국어 버전도 검증된 상품 사실만 번역한다. 한국 판매 페이지·링크의 제공 여부, 지역별 접근성이나 작동 여부를 언급하지 않는다.",
+          `도우인 caption과 샤오홍슈 body 각각에 다음 제휴 고지를 반드시 포함한다: ${chineseAffiliateDisclosure}`,
           "샤오홍슈 카드 visualDirection은 제공된 상품 사진만으로 제작 가능한 확대·이동·배경·기능 강조 지시로 쓴다.",
         ].join("\n"),
       }],
@@ -321,46 +344,52 @@ export async function generateCommercePackage(input: {
   const raw = response.output_text?.trim();
   if (!raw) throw new Error("쇼핑 콘텐츠 패키지 결과가 비어 있습니다.");
   const parsed = JSON.parse(raw) as CommercePackage;
-  const hookOptions = cleanStrings(parsed.hookOptions, 3).map(removeUnsupportedAccessClaims);
-  const voiceover = fitBodyToDuration(removeUnsupportedAccessClaims(String(parsed.voiceover || "")), hookOptions, input.durationSeconds);
+  const platformTargets = new Set((input.platformTargets || ["youtube"]).map((item) => String(item).toLowerCase()));
+  const hookOptions = cleanStrings(parsed.hookOptions, 3).map(neutralizeUnsupportedModifiers);
+  const voiceover = fitBodyToDuration(neutralizeUnsupportedModifiers(String(parsed.voiceover || "")), hookOptions, input.durationSeconds);
   const result: CommercePackage = {
     productCode: input.productCode,
-    title: String(parsed.title || input.productName).trim(),
+    title: neutralizeUnsupportedModifiers(String(parsed.title || input.productName)),
     hookOptions,
     voiceover,
-    description: removeUnsupportedAccessClaims(String(parsed.description || "")),
+    description: neutralizeUnsupportedModifiers(String(parsed.description || "")),
     hashtags: cleanStrings(parsed.hashtags, 12).map((tag) => tag.startsWith("#") ? tag : `#${tag}`),
     disclosure: String(parsed.disclosure || "이 콘텐츠에는 제휴 링크가 포함될 수 있습니다.").trim(),
-    cta: String(parsed.cta || "프로필 링크에서 해당 상품을 확인해보세요.").trim(),
-    thumbnailOptions: Array.isArray(parsed.thumbnailOptions) ? parsed.thumbnailOptions.slice(0, 3) : [],
+    cta: neutralizeUnsupportedModifiers(String(parsed.cta || "프로필 링크에서 해당 상품을 확인해보세요.")),
+    thumbnailOptions: Array.isArray(parsed.thumbnailOptions) ? parsed.thumbnailOptions.slice(0, 3).map((option) => ({
+      ...option,
+      headline: neutralizeUnsupportedModifiers(option.headline),
+      accent: neutralizeUnsupportedModifiers(option.accent),
+    })) : [],
     verifiedClaims: allowedFacts,
-    cautions: cleanStrings(parsed.cautions, 10),
+    cautions: cleanStrings(parsed.cautions, 10).map(neutralizeUnsupportedModifiers),
     subtitleCues: createExactSubtitleCues(voiceover, input.durationSeconds),
     platformVersions: {
       youtube: {
         ...parsed.platformVersions.youtube,
-        description: removeUnsupportedAccessClaims(parsed.platformVersions.youtube.description),
+        title: neutralizeUnsupportedModifiers(parsed.platformVersions.youtube.title),
+        description: neutralizeUnsupportedModifiers(parsed.platformVersions.youtube.description),
         script: voiceover,
       },
       instagram: {
         ...parsed.platformVersions.instagram,
-        caption: removeUnsupportedAccessClaims(parsed.platformVersions.instagram.caption),
+        caption: neutralizeUnsupportedModifiers(parsed.platformVersions.instagram.caption),
         script: voiceover,
       },
       douyin: {
         ...parsed.platformVersions.douyin,
-        title: removeUnsupportedAccessClaims(parsed.platformVersions.douyin.title),
-        caption: removeUnsupportedAccessClaims(parsed.platformVersions.douyin.caption),
-        scriptSimplifiedChinese: removeUnsupportedAccessClaims(parsed.platformVersions.douyin.scriptSimplifiedChinese),
+        title: neutralizeUnsupportedModifiers(parsed.platformVersions.douyin.title),
+        caption: ensureChineseAffiliateDisclosure(parsed.platformVersions.douyin.caption),
+        scriptSimplifiedChinese: neutralizeUnsupportedModifiers(parsed.platformVersions.douyin.scriptSimplifiedChinese),
       },
       xiaohongshu: {
         ...parsed.platformVersions.xiaohongshu,
-        title: removeUnsupportedAccessClaims(parsed.platformVersions.xiaohongshu.title),
-        body: removeUnsupportedAccessClaims(parsed.platformVersions.xiaohongshu.body),
+        title: neutralizeUnsupportedModifiers(parsed.platformVersions.xiaohongshu.title),
+        body: ensureChineseAffiliateDisclosure(parsed.platformVersions.xiaohongshu.body),
         cards: parsed.platformVersions.xiaohongshu.cards.map((card) => ({
           ...card,
-          headline: removeUnsupportedAccessClaims(card.headline),
-          body: removeUnsupportedAccessClaims(card.body),
+          headline: neutralizeUnsupportedModifiers(card.headline),
+          body: neutralizeUnsupportedModifiers(card.body),
         })),
       },
     },
@@ -375,6 +404,15 @@ export async function generateCommercePackage(input: {
     throw new Error("쇼핑 콘텐츠 패키지 형식이 올바르지 않습니다.");
   }
   const auditModel = process.env.OPENAI_QUALITY_MODEL || model;
+  const auditPlatformVersions: Record<string, unknown> = {};
+  if (platformTargets.has("youtube")) auditPlatformVersions.youtube = result.platformVersions.youtube;
+  if (platformTargets.has("instagram")) auditPlatformVersions.instagram = result.platformVersions.instagram;
+  if (platformTargets.has("douyin")) auditPlatformVersions.douyin = result.platformVersions.douyin;
+  if (platformTargets.has("xiaohongshu")) auditPlatformVersions.xiaohongshu = result.platformVersions.xiaohongshu;
+  const auditContent = {
+    ...result,
+    platformVersions: auditPlatformVersions,
+  };
   const auditResponse = await openai.responses.create({
     model: auditModel,
     reasoning: { effort: "high" },
@@ -387,7 +425,9 @@ export async function generateCommercePackage(input: {
           `상품명: ${input.productName}`,
           `유일하게 허용된 상품 사실: ${allowedFacts.join(" / ")}`,
           `목표 길이: ${input.durationSeconds}초`,
-          `검수할 콘텐츠: ${JSON.stringify(result)}`,
+          `검수 대상 게시 플랫폼: ${Array.from(platformTargets).join(", ")}`,
+          `검수할 콘텐츠: ${JSON.stringify(auditContent)}`,
+          "검수 대상 게시 플랫폼에 포함된 버전만 심사한다. 제공되지 않은 도우인·샤오홍슈 등 비대상 플랫폼 버전을 상상하거나 승인 판단에 포함하지 않는다.",
           "허용된 상품 사실로 직접 뒷받침되지 않는 가격, 수치, 효능, 비교우위, 후기, 사용 경험 표현은 모두 문제다.",
           "직접 사용했다는 표현, 확정적 성과, 과장 표현이 있으면 claimSafety 또는 directExperienceLanguage를 false로 한다.",
           "제휴 고지가 명확하지 않으면 affiliateDisclosure를 false로 한다.",
