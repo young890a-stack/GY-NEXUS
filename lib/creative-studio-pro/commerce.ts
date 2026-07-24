@@ -260,6 +260,18 @@ function ensureChineseAffiliateDisclosure(value: string) {
   return `${text}${text ? "\n" : ""}${chineseAffiliateDisclosure}`;
 }
 
+function parseStructuredJson<T>(raw: string, label: string): T {
+  const normalized = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+  const start = normalized.indexOf("{");
+  const end = normalized.lastIndexOf("}");
+  const candidate = start >= 0 && end > start ? normalized.slice(start, end + 1) : normalized;
+  try {
+    return JSON.parse(candidate) as T;
+  } catch {
+    throw new Error(`${label} JSON이 완성되지 않았습니다.`);
+  }
+}
+
 export function createExactSubtitleCues(script: string, durationSeconds: number) {
   const words = script.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
   if (!words.length) return [];
@@ -311,7 +323,7 @@ export async function generateCommercePackage(input: {
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const model = process.env.OPENAI_FAST_MODEL || process.env.OPENAI_STRATEGY_MODEL || process.env.OPENAI_QUALITY_MODEL || "gpt-5.6-sol";
-  const response = await openai.responses.create({
+  const requestPackage = (maxOutputTokens: number) => openai.responses.create({
     model,
     reasoning: { effort: "medium" },
     input: [{
@@ -357,12 +369,26 @@ export async function generateCommercePackage(input: {
         schema: koreanOnly ? koreanSchema : schema,
       },
     },
-    max_output_tokens: koreanOnly ? 3200 : 6000,
+    max_output_tokens: maxOutputTokens,
   });
 
-  const raw = response.output_text?.trim();
-  if (!raw) throw new Error("쇼핑 콘텐츠 패키지 결과가 비어 있습니다.");
-  const parsed = JSON.parse(raw) as CommercePackage;
+  let parsed: CommercePackage | null = null;
+  let packageFailure: unknown = null;
+  for (let attempt = 0; attempt < 2 && !parsed; attempt += 1) {
+    try {
+      const response = await requestPackage(koreanOnly ? (attempt === 0 ? 5200 : 7000) : (attempt === 0 ? 7000 : 9000));
+      const raw = response.output_text?.trim();
+      if (!raw) throw new Error("쇼핑 콘텐츠 패키지 결과가 비어 있습니다.");
+      parsed = parseStructuredJson<CommercePackage>(raw, "쇼핑 콘텐츠 패키지");
+    } catch (error) {
+      packageFailure = error;
+    }
+  }
+  if (!parsed) {
+    throw new Error(packageFailure instanceof Error
+      ? `Dream Y가 잘린 AI 응답을 자동 재시도했지만 복구하지 못했습니다: ${packageFailure.message}`
+      : "Dream Y가 쇼핑 콘텐츠 패키지를 자동 복구하지 못했습니다.");
+  }
   const parsedDouyin = parsed.platformVersions.douyin || { title: "", caption: "", scriptSimplifiedChinese: "", hashtags: [] };
   const parsedXiaohongshu = parsed.platformVersions.xiaohongshu || { title: "", body: "", hashtags: [], cards: [] };
   const hookOptions = cleanStrings(parsed.hookOptions, 3).map(neutralizeUnsupportedModifiers);
@@ -433,7 +459,7 @@ export async function generateCommercePackage(input: {
     ...result,
     platformVersions: auditPlatformVersions,
   };
-  const auditResponse = await openai.responses.create({
+  const requestAudit = (maxOutputTokens: number) => openai.responses.create({
     model: auditModel,
     reasoning: { effort: "high" },
     input: [{
@@ -458,11 +484,25 @@ export async function generateCommercePackage(input: {
       }],
     }],
     text: { format: { type: "json_schema", name: "gy_commerce_quality_audit", strict: true, schema: auditSchema } },
-    max_output_tokens: 2200,
+    max_output_tokens: maxOutputTokens,
   });
-  const auditRaw = auditResponse.output_text?.trim();
-  if (!auditRaw) throw new Error("쇼핑 콘텐츠 독립 품질검수 결과가 비어 있습니다.");
-  const audit = JSON.parse(auditRaw) as CommerceQualityAudit;
+  let audit: CommerceQualityAudit | null = null;
+  let auditFailure: unknown = null;
+  for (let attempt = 0; attempt < 2 && !audit; attempt += 1) {
+    try {
+      const auditResponse = await requestAudit(attempt === 0 ? 2600 : 4000);
+      const auditRaw = auditResponse.output_text?.trim();
+      if (!auditRaw) throw new Error("쇼핑 콘텐츠 독립 품질검수 결과가 비어 있습니다.");
+      audit = parseStructuredJson<CommerceQualityAudit>(auditRaw, "독립 품질검수");
+    } catch (error) {
+      auditFailure = error;
+    }
+  }
+  if (!audit) {
+    throw new Error(auditFailure instanceof Error
+      ? `Dream Y가 품질검수 응답을 자동 재시도했지만 복구하지 못했습니다: ${auditFailure.message}`
+      : "Dream Y가 품질검수 응답을 자동 복구하지 못했습니다.");
+  }
   audit.approved = Boolean(audit.approved) && Object.values(audit.checks).every(Boolean);
   audit.score = Math.max(0, Math.min(100, Number(audit.score) || 0));
   audit.issues = cleanStrings(audit.issues, 10);

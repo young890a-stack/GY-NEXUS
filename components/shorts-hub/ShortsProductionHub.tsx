@@ -1107,6 +1107,48 @@ export default function ShortsProductionHub() {
     ].join("\n\n");
   }
 
+  async function runDreamYProductization(id: string) {
+    let lastFailure: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        setMessage(attempt === 0
+          ? "Dream Y가 한국형 게시 패키지와 독립 광고검수를 진행하고 있습니다."
+          : "Dream Y가 첫 검수 결과를 스스로 보완해 한 번 더 확인하고 있습니다.");
+        await jsonRequest(`/api/creative-studio-pro/projects/${id}/productization`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ force: true }),
+        });
+        await jsonRequest(`/api/creative-studio-pro/projects/${id}/content-approval`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hookIndex: 0 }),
+        });
+        return;
+      } catch (cause) {
+        lastFailure = cause;
+        if (attempt === 0) await sleep(700);
+      }
+    }
+    throw lastFailure instanceof Error ? lastFailure : new Error("Dream Y 상품화와 품질검수를 완료하지 못했습니다.");
+  }
+
+  async function completeProjectSetup(
+    id: string,
+    sceneCount: number,
+    fallbackProject: ProjectRecord | null,
+    fallbackScenes: ProjectScene[],
+  ) {
+    await runDreamYProductization(id);
+    const latest = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
+    setProjectDetail(latest.project || fallbackProject);
+    setProjectScenes(Array.isArray(latest.scenes) ? latest.scenes : fallbackScenes);
+    setLearningData(hydrateLearningData((latest.project || fallbackProject)?.settings?.learningEngine || null));
+    markStep("project", "done", `${sceneCount}개 장면 프로젝트 생성`);
+    setMessage("프로젝트와 독립 검수가 완료됐습니다. 내 영상이 있다면 Gemini가 좋은 구간을 자동 선별합니다.");
+    setActiveStep("analysis");
+  }
+
   async function attachChinaReference(id: string) {
     if (sourceStrategy !== "china-reference") return;
 
@@ -1231,24 +1273,7 @@ export default function ShortsProductionHub() {
 
     await attachChinaReference(id);
 
-    await jsonRequest(`/api/creative-studio-pro/projects/${id}/productization`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ force: true }),
-    });
-    await jsonRequest(`/api/creative-studio-pro/projects/${id}/content-approval`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hookIndex: 0 }),
-    });
-
-    const latest = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
-    setProjectDetail(latest.project || data.project);
-    setProjectScenes(Array.isArray(latest.scenes) ? latest.scenes : data.scenes || []);
-    setLearningData(hydrateLearningData((latest.project || data.project)?.settings?.learningEngine || null));
-    markStep("project", "done", `${sceneCount}개 장면 프로젝트 생성`);
-    setMessage("프로젝트가 저장됐습니다. 내 영상이 있다면 Gemini가 좋은 구간을 자동 선별합니다.");
-    setActiveStep("analysis");
+    await completeProjectSetup(id, sceneCount, data.project, Array.isArray(data.scenes) ? data.scenes : []);
     return { id, sceneCount };
   }
 
@@ -1258,6 +1283,12 @@ export default function ShortsProductionHub() {
     setError("");
 
     try {
+      if (projectId) {
+        const sceneCount = Math.max(1, projectScenes.length || Math.ceil(duration / 5));
+        setMessage("새 프로젝트를 만들지 않고 중단된 기존 프로젝트에서 Dream Y 검수를 이어갑니다.");
+        await completeProjectSetup(projectId, sceneCount, projectDetail, projectScenes);
+        return;
+      }
       const result = factoryResult || await generateStrategyCore();
       const references = referenceImageUrls.length ? referenceImageUrls : await uploadReferencesCore();
       await createProjectCore(result, references);
