@@ -31,6 +31,8 @@ type ImportedProduct = {
   warning?: string;
 };
 
+const INVALID_PRODUCT_NAME = /^(access denied|forbidden|request blocked|요청이 차단|접근이 거부|접근 거부|robot check|captcha|보안 확인)/i;
+
 type TrendKeyword = {
   keyword: string;
   traffic: number;
@@ -953,8 +955,20 @@ export default function ShortsProductionHub() {
       if (!data.product) throw new Error("상품 정보를 받지 못했습니다.");
 
       setAffiliateUrl(data.product.finalUrl || affiliateUrl.trim());
-      setProductName(data.product.name || "");
-      setDescription(data.product.description || "");
+      const importedName = String(data.product.name || "").trim();
+      const importedDescription = String(data.product.description || "").trim();
+      if (!importedName || INVALID_PRODUCT_NAME.test(importedName)) {
+        setProductName("");
+        setDescription("");
+        setProductImageUrl(data.product.imageUrl || "");
+        setPriceText(data.product.priceText || "");
+        setPlatform(data.product.platform || "");
+        markStep("product", "error", "상품 페이지 자동 읽기 차단 · 직접 입력 필요");
+        setError(data.product.warning || "판매 사이트가 자동 읽기를 차단했습니다. 실제 상품명과 확인된 상품 설명을 직접 입력해주세요.");
+        return;
+      }
+      setProductName(importedName);
+      setDescription(importedDescription);
       setProductImageUrl(data.product.imageUrl || "");
       setPriceText(data.product.priceText || "");
       setPlatform(data.product.platform || "");
@@ -1154,6 +1168,12 @@ export default function ShortsProductionHub() {
     result: ContentFactoryPackage,
     references: string[],
   ): Promise<{ id: string; sceneCount: number }> {
+    if (!productName.trim() || INVALID_PRODUCT_NAME.test(productName.trim())) {
+      throw new Error("차단 화면 문구가 아닌 실제 상품명을 입력해주세요.");
+    }
+    if (description.trim().length < 5) {
+      throw new Error("광고 사실 검수를 위해 판매 페이지나 제품 포장에서 직접 확인한 상품 설명을 5자 이상 입력해주세요.");
+    }
     markStep("project", "running");
     setMessage("대본·썸네일·음악 설정을 하나의 영상 프로젝트로 묶고 있습니다.");
 
@@ -1169,7 +1189,7 @@ export default function ShortsProductionHub() {
       body: JSON.stringify({
         title: `${productName} 쇼핑 쇼츠`,
         productName,
-        productDescription: description || `${productName} 상품 소개`,
+        productDescription: description.trim(),
         productUrl: affiliateUrl,
         affiliateUrl,
         masterPrompt: buildMasterPrompt(result),
@@ -1641,10 +1661,13 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
             </label>
             <label>상품명<input value={productName} onChange={(event: ChangeEvent<HTMLInputElement>) => setProductName(event.target.value)} /></label>
             <label>판매 플랫폼<input value={platform} onChange={(event: ChangeEvent<HTMLInputElement>) => setPlatform(event.target.value)} placeholder="쿠팡·Temu 등" /></label>
-            <label className={styles.wide}>상품 설명<textarea rows={5} value={description} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setDescription(event.target.value)} /></label>
+            <label className={styles.wide}>확인된 상품 설명
+              <textarea rows={5} value={description} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setDescription(event.target.value)} placeholder="판매 페이지, 제품 포장 또는 제조사 자료에서 직접 확인한 기능·구성·규격만 입력하세요." />
+              <small className={styles.helper}>AI는 이 내용만 광고 사실로 사용합니다. 후기·추측·확인되지 않은 효능은 입력하지 마세요.</small>
+            </label>
             <label className={styles.wide}>상품 이미지 주소<input value={productImageUrl} onChange={(event: ChangeEvent<HTMLInputElement>) => setProductImageUrl(event.target.value)} placeholder="https://" /></label>
           </div>
-          <button className={styles.primary} type="button" onClick={() => { markStep("product", "done", productName || "상품정보 직접 입력"); moveTo("strategy"); }} disabled={!productName.trim()}>
+          <button className={styles.primary} type="button" onClick={() => { markStep("product", "done", productName || "상품정보 직접 입력"); moveTo("strategy"); }} disabled={!productName.trim() || INVALID_PRODUCT_NAME.test(productName.trim()) || description.trim().length < 5}>
             상품정보 확정
           </button>
         </section>

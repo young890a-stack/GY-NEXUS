@@ -19,6 +19,12 @@ type ImportedProduct = {
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
 const MAX_HTML_BYTES = 2_500_000;
+const BLOCKED_PAGE_TEXT = /^(access denied|forbidden|request blocked|요청이 차단|접근이 거부|접근 거부|robot check|captcha|보안 확인)/i;
+
+function usableProductText(value: unknown) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text && !BLOCKED_PAGE_TEXT.test(text) ? text : "";
+}
 
 function isPrivateHostname(hostname: string) {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
@@ -202,14 +208,18 @@ async function fetchProductPage(initial: URL) {
 
 function pageProduct(html: string, finalUrl: URL): ImportedProduct {
   const jsonLd = productJsonLd(html);
-  const name = String(jsonLd?.name || "").trim()
+  const name = usableProductText(
+    String(jsonLd?.name || "").trim()
     || metaContent(html, "og:title")
     || metaContent(html, "twitter:title")
-    || titleText(html);
-  const description = stripTags(String(jsonLd?.description || ""))
+    || titleText(html),
+  );
+  const description = usableProductText(
+    stripTags(String(jsonLd?.description || ""))
     || metaContent(html, "og:description")
     || metaContent(html, "description")
-    || metaContent(html, "twitter:description");
+    || metaContent(html, "twitter:description"),
+  );
   const image = firstString(jsonLd?.image)
     || metaContent(html, "og:image")
     || metaContent(html, "twitter:image");
@@ -227,7 +237,7 @@ function pageProduct(html: string, finalUrl: URL): ImportedProduct {
     source: name || description || image ? "page-metadata" : "link-only",
     ...(name || description || image
       ? {}
-      : { warning: "판매 사이트가 자동 읽기를 제한해 링크만 확인했습니다. 상품명과 설명을 직접 입력하면 나머지 과정은 계속됩니다." }),
+      : { warning: "판매 사이트가 자동 읽기를 제한해 차단 화면만 반환했습니다. 상품명과 확인된 상품 설명을 직접 입력해주세요." }),
   };
 }
 
@@ -250,16 +260,21 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (exactProduct) {
+      const savedName = usableProductText(exactProduct.title);
+      const savedDescription = usableProductText(exactProduct.description);
       return NextResponse.json({
         success: true,
         product: {
-          name: String(exactProduct.title || ""),
-          description: String(exactProduct.description || ""),
+          name: savedName,
+          description: savedDescription,
           imageUrl: String(exactProduct.image_url || ""),
           priceText: String(exactProduct.price_text || ""),
           platform: String(exactProduct.platform || platformFor(requestedUrl)),
           finalUrl: String(exactProduct.affiliate_url || requestedUrl.toString()),
           source: "database",
+          ...(!savedName
+            ? { warning: "저장된 상품명이 차단 화면 문구라서 사용하지 않았습니다. 실제 상품명과 확인된 설명을 직접 입력해주세요." }
+            : {}),
         } satisfies ImportedProduct,
       });
     }

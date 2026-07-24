@@ -184,6 +184,46 @@ const schema = {
 const cleanStrings = (value: unknown, limit: number) =>
   Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean).slice(0, limit) : [];
 
+const invalidProductFact = /access denied|forbidden|request blocked|접근이 거부|접근 거부|요청이 차단/i;
+
+function verifiedFactsFromDescription(value: string) {
+  if (!value.trim() || invalidProductFact.test(value)) return [];
+  return value
+    .split(/[\n.!?。！？]+/)
+    .map((item) => item.replace(/\s+/g, " ").trim())
+    .filter((item) => item.length >= 2)
+    .slice(0, 8);
+}
+
+function compactLength(value: string) {
+  return value.replace(/\s/g, "").length;
+}
+
+function fitBodyToDuration(body: string, hooks: string[], durationSeconds: number) {
+  const longestHook = hooks.reduce((longest, hook) => Math.max(longest, compactLength(hook)), 0);
+  const bodyBudget = Math.max(24, Math.floor(durationSeconds * 5.2) - longestHook - 2);
+  const normalized = body.replace(/\s+/g, " ").trim();
+  if (compactLength(normalized) <= bodyBudget) return normalized;
+  const words = normalized.split(" ");
+  let fitted = "";
+  for (const word of words) {
+    const next = fitted ? `${fitted} ${word}` : word;
+    if (compactLength(next) > bodyBudget) break;
+    fitted = next;
+  }
+  if (!fitted) fitted = normalized.slice(0, bodyBudget);
+  return fitted.replace(/[,\s]+$/g, "").replace(/[.!?。！？]?$/, ".");
+}
+
+function removeUnsupportedAccessClaims(value: string) {
+  return value
+    .replace(/쿠팡 판매 페이지와 제휴 링크가 제공되었습니다[.!?]?/gi, "")
+    .replace(/한국 판매 페이지는 지역에 따라 접근성이 다를 수 있습니다[.!?]?/gi, "")
+    .replace(/韩国(?:销售)?(?:页面|链接)[^。.!?]*(?:地区|访问|可用)[^。.!?]*[。.!?]?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 export function createExactSubtitleCues(script: string, durationSeconds: number) {
   const words = script.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
   if (!words.length) return [];
@@ -226,6 +266,10 @@ export async function generateCommercePackage(input: {
   trendIntelligence?: TrendIntelligence;
 }) {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY가 없습니다.");
+  const allowedFacts = verifiedFactsFromDescription(input.productDescription);
+  if (!allowedFacts.length) {
+    throw new Error("광고 생성에 사용할 확인된 상품 설명이 없습니다. 차단 화면 문구가 아닌 실제 상품 정보를 입력해주세요.");
+  }
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const model = process.env.OPENAI_FAST_MODEL || process.env.OPENAI_STRATEGY_MODEL || process.env.OPENAI_QUALITY_MODEL || "gpt-5.6-sol";
@@ -239,7 +283,7 @@ export async function generateCommercePackage(input: {
         text: [
           "당신은 GY-NEXUS의 한국 쇼핑 쇼츠 광고감독이다.",
           `상품명: ${input.productName}`,
-          `검증된 상품 설명: ${input.productDescription || "확인된 설명 없음"}`,
+          `검증된 상품 사실 목록: ${allowedFacts.join(" / ")}`,
           `영상 길이: ${input.durationSeconds}초`,
           `연출 스타일: ${input.style}`,
           `게시 대상: ${(input.platformTargets || ["youtube"]).join(", ")}`,
@@ -251,13 +295,14 @@ export async function generateCommercePackage(input: {
           `독창적 판매 각도: ${(input.trendIntelligence?.sellingAngles || []).join(" / ") || "없음"}`,
           "대상은 한국의 20~40대다. 첫 2초에 구체적인 문제 또는 결과를 제시한다.",
           "상품 설명에서 확인된 사실만 장점으로 말하고 가격, 할인율, 성능 수치나 사용 후기를 추측하지 않는다.",
+          "판매 페이지나 제휴 링크가 제공되었다는 사실을 verifiedClaims에 넣지 않는다. verifiedClaims에는 위 검증된 상품 사실 목록의 문장만 그대로 사용한다.",
           "직접 사용하지 않았다면 직접 써봤다는 표현을 금지한다. 상품 특징 소개의 관점으로 작성한다.",
-          "voiceover는 선택형 훅을 제외한 본문 대본이다. hookOptions 중 하나를 앞에 붙여도 지정 길이에 자연스럽게 읽히도록 짧게 작성한다.",
+          `voiceover는 선택형 훅을 제외한 본문 대본이다. 가장 긴 hookOptions 하나와 합친 전체 한국어 대본이 ${input.durationSeconds}초 안에 자연스럽게 읽히도록 충분히 짧게 작성한다.`,
           "썸네일 headline은 12자 안팎, accent는 8자 안팎으로 쓰고 과장된 99%, 무조건, 역대급 같은 문구는 금지한다.",
           `CTA는 쇼츠 설명 URL이 클릭되지 않을 수 있으므로 '프로필 링크의 상품 번호 ${input.productCode} 확인' 방식으로 작성한다.`,
           "description에는 상품 요약과 제휴 고지를 포함한다. 해시태그는 실제 상품과 관련된 것만 작성한다.",
           "YouTube·Instagram용 한국어 버전, Douyin용 자연스러운 중국어 간체 버전, Xiaohongshu용 6~9장 사진 노트를 각각 만든다.",
-          "중국어 버전도 검증된 상품 사실만 번역하며 한국 판매 링크가 중국에서 작동한다고 가정하지 않는다.",
+          "중국어 버전도 검증된 상품 사실만 번역한다. 한국 판매 페이지·링크의 제공 여부, 지역별 접근성이나 작동 여부를 언급하지 않는다.",
           "샤오홍슈 카드 visualDirection은 제공된 상품 사진만으로 제작 가능한 확대·이동·배경·기능 강조 지시로 쓴다.",
         ].join("\n"),
       }],
@@ -276,20 +321,49 @@ export async function generateCommercePackage(input: {
   const raw = response.output_text?.trim();
   if (!raw) throw new Error("쇼핑 콘텐츠 패키지 결과가 비어 있습니다.");
   const parsed = JSON.parse(raw) as CommercePackage;
+  const hookOptions = cleanStrings(parsed.hookOptions, 3).map(removeUnsupportedAccessClaims);
+  const voiceover = fitBodyToDuration(removeUnsupportedAccessClaims(String(parsed.voiceover || "")), hookOptions, input.durationSeconds);
   const result: CommercePackage = {
     productCode: input.productCode,
     title: String(parsed.title || input.productName).trim(),
-    hookOptions: cleanStrings(parsed.hookOptions, 3),
-    voiceover: String(parsed.voiceover || "").trim(),
-    description: String(parsed.description || "").trim(),
+    hookOptions,
+    voiceover,
+    description: removeUnsupportedAccessClaims(String(parsed.description || "")),
     hashtags: cleanStrings(parsed.hashtags, 12).map((tag) => tag.startsWith("#") ? tag : `#${tag}`),
     disclosure: String(parsed.disclosure || "이 콘텐츠에는 제휴 링크가 포함될 수 있습니다.").trim(),
     cta: String(parsed.cta || "프로필 링크에서 해당 상품을 확인해보세요.").trim(),
     thumbnailOptions: Array.isArray(parsed.thumbnailOptions) ? parsed.thumbnailOptions.slice(0, 3) : [],
-    verifiedClaims: cleanStrings(parsed.verifiedClaims, 10),
+    verifiedClaims: allowedFacts,
     cautions: cleanStrings(parsed.cautions, 10),
-    subtitleCues: createExactSubtitleCues(String(parsed.voiceover || "").trim(), input.durationSeconds),
-    platformVersions: parsed.platformVersions,
+    subtitleCues: createExactSubtitleCues(voiceover, input.durationSeconds),
+    platformVersions: {
+      youtube: {
+        ...parsed.platformVersions.youtube,
+        description: removeUnsupportedAccessClaims(parsed.platformVersions.youtube.description),
+        script: voiceover,
+      },
+      instagram: {
+        ...parsed.platformVersions.instagram,
+        caption: removeUnsupportedAccessClaims(parsed.platformVersions.instagram.caption),
+        script: voiceover,
+      },
+      douyin: {
+        ...parsed.platformVersions.douyin,
+        title: removeUnsupportedAccessClaims(parsed.platformVersions.douyin.title),
+        caption: removeUnsupportedAccessClaims(parsed.platformVersions.douyin.caption),
+        scriptSimplifiedChinese: removeUnsupportedAccessClaims(parsed.platformVersions.douyin.scriptSimplifiedChinese),
+      },
+      xiaohongshu: {
+        ...parsed.platformVersions.xiaohongshu,
+        title: removeUnsupportedAccessClaims(parsed.platformVersions.xiaohongshu.title),
+        body: removeUnsupportedAccessClaims(parsed.platformVersions.xiaohongshu.body),
+        cards: parsed.platformVersions.xiaohongshu.cards.map((card) => ({
+          ...card,
+          headline: removeUnsupportedAccessClaims(card.headline),
+          body: removeUnsupportedAccessClaims(card.body),
+        })),
+      },
+    },
   };
   if (
     result.hookOptions.length !== 3
@@ -311,13 +385,13 @@ export async function generateCommercePackage(input: {
         text: [
           "당신은 GY-NEXUS의 독립 광고 품질검수자다.",
           `상품명: ${input.productName}`,
-          `유일하게 허용된 상품 사실: ${input.productDescription || "없음"}`,
+          `유일하게 허용된 상품 사실: ${allowedFacts.join(" / ")}`,
           `목표 길이: ${input.durationSeconds}초`,
           `검수할 콘텐츠: ${JSON.stringify(result)}`,
           "허용된 상품 사실로 직접 뒷받침되지 않는 가격, 수치, 효능, 비교우위, 후기, 사용 경험 표현은 모두 문제다.",
           "직접 사용했다는 표현, 확정적 성과, 과장 표현이 있으면 claimSafety 또는 directExperienceLanguage를 false로 한다.",
           "제휴 고지가 명확하지 않으면 affiliateDisclosure를 false로 한다.",
-          "한국어 본문 대본 앞에 짧은 훅 하나를 더했을 때 목표 길이에 읽기 어려우면 durationFit을 false로 한다.",
+          `한국어 대본은 훅을 포함해 공백 제외 약 ${Math.floor(input.durationSeconds * 5.2)}자 이하이면 보통 속도로 읽을 수 있는 것으로 본다. 실제 합산 길이가 이 예산을 넘을 때만 durationFit을 false로 한다.`,
           "네 검수는 생성자의 자기평가와 독립적으로 보수적으로 수행한다.",
           "네 가지 check가 모두 true이고 중대한 문제가 없을 때만 approved를 true로 한다.",
         ].join("\n"),
