@@ -8,6 +8,7 @@ import styles from "./ShortsProductionHub.module.css";
 
 type Mode = "manual" | "guided" | "auto";
 type SourceStrategy = "korean-original" | "china-reference" | "single-photo";
+type SceneGenerationMode = "fast" | "balanced" | "quality";
 type VoicePreset = "marin" | "coral" | "shimmer" | "cedar" | "onyx" | "echo";
 type StepKey = "product" | "strategy" | "assets" | "project" | "analysis" | "scenes" | "voice" | "thumbnail" | "render" | "publish";
 type StepState = "waiting" | "running" | "done" | "error";
@@ -345,6 +346,7 @@ export default function ShortsProductionHub() {
 
   const [duration, setDuration] = useState<15 | 20 | 25 | 30>(20);
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.2 | 1.4>(1);
+  const [sceneGenerationMode, setSceneGenerationMode] = useState<SceneGenerationMode>("balanced");
   const [tone, setTone] = useState("친근하고 재미있는 생활 밀착형");
   const [style, setStyle] = useState<"problem-solution" | "ugc-review" | "how-to" | "cinematic-product">("problem-solution");
   const [voicePreset, setVoicePreset] = useState<VoicePreset>("marin");
@@ -1257,9 +1259,10 @@ export default function ShortsProductionHub() {
           sfxCues,
         },
         platformTargets: ["youtube", "instagram"],
-        qualityThreshold: 85,
-        maxImageRetries: 2,
+        qualityThreshold: sceneGenerationMode === "fast" ? 82 : sceneGenerationMode === "quality" ? 88 : 85,
+        maxImageRetries: sceneGenerationMode === "fast" ? 1 : 2,
         playbackSpeed,
+        sceneGenerationMode,
       }),
     });
 
@@ -1310,19 +1313,39 @@ export default function ShortsProductionHub() {
       return;
     }
     markStep("scenes", "running");
-    for (let index = 0; index < sceneCount * 3 + 2; index += 1) {
-      const result = await jsonRequest<{ done?: boolean; message?: string }>(
-        `/api/creative-studio-pro/projects/${id}/prepare-next`,
-        { method: "POST" },
-      );
-      setMessage(result.message || `AI 장면 ${Math.min(index + 1, sceneCount)}개를 준비하고 있습니다.`);
-      if (result.done) break;
+    let transientFailures = 0;
+    const maxSteps = sceneCount * (sceneGenerationMode === "quality" ? 5 : 3) + 6;
+    for (let index = 0; index < maxSteps; index += 1) {
+      try {
+        const result = await jsonRequest<{ done?: boolean; message?: string }>(
+          `/api/creative-studio-pro/projects/${id}/prepare-next`,
+          { method: "POST" },
+        );
+        transientFailures = 0;
+        setMessage(result.message || `AI 장면 ${Math.min(index + 1, sceneCount)}개를 준비하고 있습니다.`);
+        if (result.done) break;
+      } catch (cause) {
+        const reason = cause instanceof Error ? cause.message : "장면 요청 실패";
+        const recoverable =
+          /504|502|503|timeout|시간|network|fetch|요청 실패|자동 복구|응답|JSON|잘렸|전송/i.test(
+            reason,
+          );
+        if (!recoverable || transientFailures >= 3) throw cause;
+        transientFailures += 1;
+        setMessage(`장면 작업이 길어져 Dream Y가 자동으로 이어서 처리합니다. (${transientFailures}/3)`);
+        await sleep(900);
+      }
     }
 
     const latest = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
-    setProjectScenes(Array.isArray(latest.scenes) ? latest.scenes : []);
+    const latestScenes = Array.isArray(latest.scenes) ? latest.scenes : [];
+    setProjectScenes(latestScenes);
     setProjectDetail(latest.project || projectDetail);
-    markStep("scenes", "done", "85점 기준 장면 품질검수 완료");
+    const incomplete = latestScenes.filter((scene) => scene.quality_status !== "approved");
+    if (incomplete.length) {
+      throw new Error(`장면 ${incomplete.map((scene) => scene.scene_number).join(", ")}번이 아직 준비 중이거나 검수 보류 상태입니다. 다시 누르면 저장된 지점부터 이어집니다.`);
+    }
+    markStep("scenes", "done", `${sceneGenerationMode === "fast" ? "빠른" : sceneGenerationMode === "quality" ? "최고품질" : "균형"} 장면 검수 완료`);
     setMessage("장면 준비가 끝났습니다. 승인 대본으로 한국어 음성을 생성합니다.");
     setActiveStep("voice");
   }
@@ -1798,13 +1821,27 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
         <section className={styles.stageCard}>
           <div className={styles.stageHeading}><div><span>STEP 04</span><h2>제작 방식과 프로젝트</h2></div><strong>{projectId ? "저장됨" : "미생성"}</strong></div>
           <p className={styles.helper}>한국형 쇼츠는 중국 키워드·플랫폼 패키지를 생략하는 빠른 생성 경로를 사용합니다. 광고 품질검수와 상품 사진 검수는 그대로 유지됩니다.</p>
-          <div className={styles.choiceGrid} style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+          <div className={`${styles.choiceGrid} ${styles.twoChoiceGrid}`}>
             <button type="button" className={sourceStrategy === "korean-original" ? styles.selectedChoice : ""} onClick={() => setSourceStrategy("korean-original")}>
               <b>한국형 직접 제작</b><span>내 상품 사진과 한국형 대본 중심</span>
             </button>
             <button type="button" className={sourceStrategy === "single-photo" ? styles.selectedChoice : ""} onClick={() => setSourceStrategy("single-photo")}>
               <b>사진 한 장 AI 쇼츠</b><span>상품 이미지 한 장으로 새 장면 생성</span>
             </button>
+          </div>
+          <div>
+            <b className={styles.fieldTitle}>장면 제작 속도</b>
+            <div className={styles.speedModeGrid}>
+              <button type="button" className={sceneGenerationMode === "fast" ? styles.selectedChoice : ""} onClick={() => setSceneGenerationMode("fast")}>
+                <b>빠르게</b><span>후보 1장 · 빠른 검수 · 생성 1회</span>
+              </button>
+              <button type="button" className={sceneGenerationMode === "balanced" ? styles.selectedChoice : ""} onClick={() => setSceneGenerationMode("balanced")}>
+                <b>균형 · 추천</b><span>후보 2장 · 실패 시 1회 자동 재생성</span>
+              </button>
+              <button type="button" className={sceneGenerationMode === "quality" ? styles.selectedChoice : ""} onClick={() => setSceneGenerationMode("quality")}>
+                <b>최고품질</b><span>후보 3장 · 고해상도 마감을 별도 처리</span>
+              </button>
+            </div>
           </div>
           <div className={styles.formGrid}>
             <label>영상 스타일<select value={style} onChange={(event: ChangeEvent<HTMLSelectElement>) => setStyle(event.target.value as typeof style)}>
@@ -1818,7 +1855,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
               <option value={1.2}>1.2x · 빠른 쇼츠</option>
               <option value={1.4}>1.4x · 매우 빠르게</option>
             </select><small className={styles.helper}>영상 편집 배속이며 프로젝트 생성 속도와는 별개입니다.</small></label>
-            <label>품질 기준<input value="85점 · 최대 2회 재생성" readOnly /></label>
+            <label>품질 기준<input value={sceneGenerationMode === "fast" ? "82점 · 빠른 검수" : sceneGenerationMode === "quality" ? "88점 · 최고품질 2단계" : "85점 · 균형 검수"} readOnly /></label>
           </div>
           <button className={styles.primary} type="button" onClick={() => void createProject()} disabled={Boolean(busy)}>
             {busy === "project" ? "프로젝트 생성 중..." : "영상 프로젝트 생성"}

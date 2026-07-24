@@ -231,6 +231,8 @@ export async function reviewSceneImageCandidates(input: {
   continuityImageUrls?: string[];
   candidates: GeneratedImageCandidate[];
   threshold: number;
+  reviewMode?: "fast" | "balanced" | "quality";
+  maxReviewAttempts?: 1 | 2;
 }) {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY가 없습니다.");
   if (input.referenceImageUrls.length < 1 || !input.candidates.length) {
@@ -240,6 +242,9 @@ export async function reviewSceneImageCandidates(input: {
   const model = process.env.OPENAI_QUALITY_MODEL || process.env.OPENAI_STRATEGY_MODEL || "gpt-5.6-sol";
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const hasContinuityAnchor = Boolean(input.continuityImageUrls?.length);
+  const reviewMode = input.reviewMode || "quality";
+  const referenceLimit = reviewMode === "fast" ? 3 : reviewMode === "balanced" ? 4 : 6;
+  const reasoningEffort = reviewMode === "fast" ? "low" : reviewMode === "balanced" ? "medium" : "high";
   const content: Array<
     | { type: "input_text"; text: string }
     | { type: "input_image"; image_url: string; detail: "original" }
@@ -264,7 +269,7 @@ export async function reviewSceneImageCandidates(input: {
     },
   ];
 
-  input.referenceImageUrls.slice(0, 6).forEach((url, index) => {
+  input.referenceImageUrls.slice(0, referenceLimit).forEach((url, index) => {
     content.push({ type: "input_text", text: `PRODUCT REFERENCE ${index + 1}` });
     content.push({ type: "input_image", image_url: url, detail: "original" });
   });
@@ -282,7 +287,7 @@ export async function reviewSceneImageCandidates(input: {
     request: async (attempt) => {
       const response = await openai.responses.create({
         model,
-        reasoning: { effort: "high" },
+        reasoning: { effort: reasoningEffort },
         input: [{ role: "user", content }],
         text: {
           format: {
@@ -292,10 +297,15 @@ export async function reviewSceneImageCandidates(input: {
             schema: qualitySchema,
           },
         },
-        max_output_tokens: attempt === 0 ? 4600 : 7000,
+        max_output_tokens: reviewMode === "fast"
+          ? 2800
+          : reviewMode === "balanced"
+            ? 3800
+            : attempt === 0 ? 4600 : 7000,
       });
       return response.output_text;
     },
+    attempts: input.maxReviewAttempts || (reviewMode === "quality" ? 2 : 1),
     validate: (value) => Boolean(value && Array.isArray(value.candidates)),
   });
 

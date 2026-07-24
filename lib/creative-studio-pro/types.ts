@@ -6,6 +6,7 @@ export type VoiceMode = "female" | "male" | "music-only" | "silent";
 export type ProSourceMode = "single-photo-commerce" | "premium-multi-photo";
 export type SubtitleStyle = "bold-pop" | "clean-card" | "minimal";
 export type ThumbnailStyle = "benefit-arrow" | "problem-solution" | "clean-product";
+export type SceneGenerationMode = "fast" | "balanced" | "quality";
 
 export type ProProjectInput = {
   title: string;
@@ -31,12 +32,14 @@ export type ProProjectInput = {
   qualityThreshold?: number;
   maxImageRetries?: number;
   playbackSpeed?: 1 | 1.2 | 1.4;
+  sceneGenerationMode?: SceneGenerationMode;
 };
 
 export type SceneQualityStatus =
   | "pending"
   | "generating"
   | "reviewing"
+  | "finalizing"
   | "approved"
   | "revision_required"
   | "hold"

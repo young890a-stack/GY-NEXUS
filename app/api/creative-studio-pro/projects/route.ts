@@ -34,8 +34,13 @@ export async function POST(request: Request) {
           : "유료 품질 기준을 위해 실제 상품 사진을 서로 다른 각도로 최소 2장 올려주세요.",
       }, { status: 400 });
     }
-    const qualityThreshold = Math.max(80, Math.min(95, Math.round(Number(input.qualityThreshold) || Number(process.env.SHORTS_QUALITY_THRESHOLD) || 85)));
-    const maxImageRetries = Math.max(1, Math.min(2, Math.round(Number(input.maxImageRetries) || Number(process.env.SHORTS_MAX_IMAGE_RETRIES) || 2)));
+    const sceneGenerationMode = (["fast", "balanced", "quality"] as const).includes(input.sceneGenerationMode || "balanced")
+      ? input.sceneGenerationMode || "balanced"
+      : "balanced";
+    const defaultThreshold = sceneGenerationMode === "fast" ? 82 : sceneGenerationMode === "quality" ? 88 : 85;
+    const qualityThreshold = Math.max(80, Math.min(95, Math.round(Number(input.qualityThreshold) || Number(process.env.SHORTS_QUALITY_THRESHOLD) || defaultThreshold)));
+    const modeRetries = sceneGenerationMode === "fast" ? 1 : 2;
+    const maxImageRetries = Math.max(1, Math.min(modeRetries, Math.round(Number(input.maxImageRetries) || modeRetries)));
 
     const supabase = createAdminClient();
     const scenes = planScenes(input);
@@ -45,7 +50,7 @@ export async function POST(request: Request) {
       duration_seconds: input.duration, ratio: input.ratio, style: input.style, subtitle_mode: input.subtitleMode,
       voice_mode: input.voiceMode, music_mood: input.musicMood || "clean-corporate", status: "planned", scene_count: scenes.length,
       quality_threshold: qualityThreshold, max_image_retries: maxImageRetries, render_approved: false,
-      settings: { ...input, sourceMode, referenceImageUrls, qualityThreshold, maxImageRetries },
+      settings: { ...input, sourceMode, referenceImageUrls, qualityThreshold, maxImageRetries, sceneGenerationMode },
     }).select("*").single();
     if (error || !project) throw error || new Error("프로젝트 저장 실패");
 
