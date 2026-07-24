@@ -1,8 +1,8 @@
 import ChinaVideoLab from "@/components/china-video-lab/ChinaVideoLab";
 
 export const metadata = {
-  title: "중국 영상 연구소 · GY-NEXUS",
-  description: "한국어 상품명을 중국어로 바꾸고 도우인·샤오홍슈 영상 후보를 독립 검색하는 전용 연구소",
+  title: "중국 소스 현지화 쇼츠 · Dream Y · GY-NEXUS",
+  description: "도우인·샤오홍슈 키워드와 영상 구조를 분석하고 사용 권한을 확인해 한국형 쇼츠로 재구성합니다.",
 };
 
 export default function ChinaVideoLabPage() {

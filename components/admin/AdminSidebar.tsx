@@ -10,8 +10,12 @@ type Item = { icon: string; ko: string; en: string; href: string };
 type Group = { ko: string; en: string; items: Item[] };
 
 const navigationGroups: Group[] = [
+  { ko: "쇼츠 제작", en: "SHORTS PRODUCTION", items: [
+    { icon: "play", ko: "쇼츠 제작센터", en: "Shorts Production Hub", href: "/admin/shorts-hub" },
+    { icon: "sparkles", ko: "한국형 쇼츠", en: "Korean Shorts", href: "/admin/korean-shorts" },
+    { icon: "search", ko: "중국 소스 현지화", en: "China Source Localization", href: "/admin/china-video-lab" },
+  ]},
   { ko: "핵심 사업", en: "CORE BUSINESS", items: [
-    { icon: "play", ko: "쇼핑 쇼츠 AI 캔버스", en: "Shopping Shorts AI Canvas", href: "/admin/shorts-hub" },
     { icon: "factory", ko: "블로그 제작실", en: "Blog Studio", href: "/admin/content-factory" },
     { icon: "box", ko: "상품·제휴링크", en: "Products & Affiliate Links", href: "/admin/products" },
   ]},

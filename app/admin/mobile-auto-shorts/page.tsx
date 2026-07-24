@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function MobileAutoShortsRedirectPage() {
-  redirect("/admin/shorts-hub");
+  redirect("/admin/korean-shorts");
 }

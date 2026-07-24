@@ -514,15 +514,15 @@ export default function ChinaVideoLab() {
       <section className={styles.hero}>
         <div>
           <span className={styles.eyebrow}>GY-NEXUS · CHINA VIDEO LAB · V{health?.version || "3.3"}</span>
-          <h1>중국 영상 연구소</h1>
+          <h1>중국 소스 현지화 쇼츠</h1>
           <p>
-            쇼핑쇼츠센터와 분리된 독립 검색실입니다.
-            한국어 상품명을 중국어로 바꾸고 도우인·샤오홍슈 영상 카드를 찾은 뒤
-            선택 결과만 제작 프로젝트로 보냅니다.
+            한국어 상품명을 중국어로 바꾸고 도우인·샤오홍슈의 인기 키워드와 영상 구조를 찾은 뒤,
+            사용 권한을 확인한 자료와 내 상품 소재로 한국형 대본·장면을 다시 만듭니다.
           </p>
         </div>
         <div className={styles.heroActions}>
-          <Link href="/admin/shopping-shorts">쇼핑쇼츠 제작실 열기</Link>
+          <Link href="/admin/shorts-hub">쇼츠 제작센터</Link>
+          <Link href="/admin/korean-shorts" className={styles.secondaryLink}>한국형 쇼츠 제작</Link>
           <Link href="/admin/connections" className={styles.secondaryLink}>통합 연결센터</Link>
         </div>
       </section>

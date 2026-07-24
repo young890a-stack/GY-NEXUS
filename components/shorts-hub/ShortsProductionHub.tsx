@@ -31,6 +31,13 @@ type ImportedProduct = {
   warning?: string;
 };
 
+type TrendKeyword = {
+  keyword: string;
+  traffic: number;
+  shopping_fit: number;
+  rank: number;
+};
+
 type CommercePackage = {
   productCode?: string;
   title?: string;
@@ -331,6 +338,8 @@ export default function ShortsProductionHub() {
   const [productImageUrl, setProductImageUrl] = useState("");
   const [priceText, setPriceText] = useState("");
   const [platform, setPlatform] = useState("");
+  const [trendKeywords, setTrendKeywords] = useState<TrendKeyword[]>([]);
+  const [selectedTrendKeywords, setSelectedTrendKeywords] = useState<string[]>([]);
 
   const [duration, setDuration] = useState<15 | 20 | 25 | 30>(20);
   const [tone, setTone] = useState("친근하고 재미있는 생활 밀착형");
@@ -974,7 +983,12 @@ export default function ShortsProductionHub() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: productName.trim(),
-          description: description.trim(),
+          description: [
+            description.trim(),
+            selectedTrendKeywords.length
+              ? `현재 한국 급상승 키워드 참고: ${selectedTrendKeywords.join(", ")}. 실제 상품과 자연스럽게 연결되는 키워드만 사용한다.`
+              : "",
+          ].filter(Boolean).join("\n"),
           affiliateUrl: affiliateUrl.trim(),
           imageUrl: productImageUrl.trim(),
           targetAudience: "20~40대 한국 시청자",
@@ -1536,6 +1550,60 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
     setMessage("대본·장면표·SRT 제작 패키지를 다운로드했습니다.");
   }
 
+  async function loadKoreanTrends() {
+    if (busy) return;
+    setBusy("trends");
+    setError("");
+    try {
+      const data = await jsonRequest<{ trends?: TrendKeyword[] }>("/api/growth-commerce/trends");
+      const loaded = (Array.isArray(data.trends) ? data.trends : [])
+        .filter((item) => item.keyword)
+        .sort((a, b) => b.shopping_fit - a.shopping_fit || b.traffic - a.traffic)
+        .slice(0, 8);
+      setTrendKeywords(loaded);
+      setSelectedTrendKeywords(loaded.slice(0, 3).map((item) => item.keyword));
+      setMessage(`한국 급상승 키워드 ${loaded.length}개를 불러왔고, 쇼핑 적합도가 높은 3개를 우선 선택했습니다.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "한국 급상승 키워드 불러오기 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function downloadCapCutPackage() {
+    if (!projectId || busy) {
+      setError("먼저 제작 프로젝트를 생성해주세요.");
+      return;
+    }
+    setBusy("capcut");
+    setError("");
+    try {
+      const response = await fetch("/api/growth-commerce/capcut-package", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { message?: string };
+        throw new Error(data.message || "CapCut 패키지를 만들지 못했습니다.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${safeFileName(productName || "gy-nexus-shorts")}-capcut.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setMessage("CapCut 가져오기 패키지를 다운로드했습니다. ZIP의 00-START-HERE 안내에 따라 마무리하세요.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "CapCut 패키지 생성 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
   const advisorText = useMemo(() => {
     if (error) return "오류가 난 단계만 다시 실행하세요. 이전에 완료된 단계와 프로젝트 데이터는 유지됩니다.";
     if (!nextWaitingStep) return "제작과 비공개 게시 준비가 끝났습니다. 성과 데이터가 쌓이면 다음 쇼츠의 훅·길이·썸네일을 개선합니다.";
@@ -1543,7 +1611,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       product: "제휴링크를 붙여넣고 상품 불러오기를 먼저 실행하세요. 상품명·이미지·가격이 부족하면 직접 보완할 수 있습니다.",
       strategy: "첫 2초 훅과 대본을 만든 뒤 대표님 말투에 맞게 수정하세요. 수정한 대본은 프로젝트 제작 지시문에 들어갑니다.",
       assets: "실제 상품 사진은 최소 1장, 가능하면 서로 다른 각도 2~4장이 좋습니다. 상품 형태 정확도가 올라갑니다.",
-      project: "한국형 직접 제작 또는 중국 인기 구조 참고 방식을 선택하고 프로젝트를 생성하세요.",
+      project: "한국형 직접 제작 또는 사진 한 장 AI 쇼츠 방식을 선택하고 프로젝트를 생성하세요. 중국 소스는 별도 현지화 메뉴에서 진행합니다.",
       analysis: "직접 촬영하거나 사용 권한이 있는 영상을 올리면 Gemini가 첫 2초 훅·사용·디테일·CTA 구간을 자동 선별합니다.",
       scenes: "AI가 상품 장면을 만들고 85점 기준으로 자동 검수합니다. 불량 장면만 다시 생성할 수 있는 기반입니다.",
       voice: "문장별 목소리·속도·연기를 수정하고, YouTube 오디오 라이브러리 음악과 효과음을 타임라인에 배치하세요.",
@@ -1601,6 +1669,31 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
               <option>감성적인 프리미엄 스토리형</option>
             </select></label>
           </div>
+          <div className={styles.audioSection}>
+            <div className={styles.audioSectionHead}>
+              <div><span>LIVE KEYWORDS</span><h3>한국 급상승 키워드</h3></div>
+              <button type="button" className={styles.subtle} onClick={() => void loadKoreanTrends()} disabled={Boolean(busy)}>
+                {busy === "trends" ? "불러오는 중..." : "인기 키워드 자동 불러오기"}
+              </button>
+            </div>
+            <p className={styles.helper}>Google Trends 한국 급상승 검색어를 가져와 쇼핑 적합도를 계산합니다. 선택 키워드는 상품과 관련 있을 때만 대본에 반영됩니다.</p>
+            {trendKeywords.length > 0 && (
+              <div className={styles.assetShelf}>
+                {trendKeywords.map((item) => {
+                  const selected = selectedTrendKeywords.includes(item.keyword);
+                  return (
+                    <button
+                      type="button"
+                      key={`${item.keyword}-${item.rank}`}
+                      onClick={() => setSelectedTrendKeywords((current) => selected ? current.filter((keyword) => keyword !== item.keyword) : [...current, item.keyword].slice(0, 5))}
+                    >
+                      {selected ? "✓ " : ""}{item.keyword} · 적합 {item.shopping_fit}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <button className={styles.primary} type="button" onClick={() => void generateStrategy()} disabled={Boolean(busy)}>
             {busy === "strategy" ? "Dream Y가 제작 중..." : "키워드·대본·장면표 생성"}
           </button>
@@ -1648,12 +1741,9 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       return (
         <section className={styles.stageCard}>
           <div className={styles.stageHeading}><div><span>STEP 04</span><h2>제작 방식과 프로젝트</h2></div><strong>{projectId ? "저장됨" : "미생성"}</strong></div>
-          <div className={styles.choiceGrid}>
+          <div className={styles.choiceGrid} style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
             <button type="button" className={sourceStrategy === "korean-original" ? styles.selectedChoice : ""} onClick={() => setSourceStrategy("korean-original")}>
               <b>한국형 직접 제작</b><span>내 상품 사진과 한국형 대본 중심</span>
-            </button>
-            <button type="button" className={sourceStrategy === "china-reference" ? styles.selectedChoice : ""} onClick={() => setSourceStrategy("china-reference")}>
-              <b>중국 인기 구조 참고</b><span>도우인·샤오홍슈의 훅과 리듬만 분석</span>
             </button>
             <button type="button" className={sourceStrategy === "single-photo" ? styles.selectedChoice : ""} onClick={() => setSourceStrategy("single-photo")}>
               <b>사진 한 장 AI 쇼츠</b><span>상품 이미지 한 장으로 새 장면 생성</span>
@@ -1977,9 +2067,14 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
           <div className={styles.engineFlow}>
             <span>상품 사진</span><i>→</i><span>AI 장면</span><i>→</i><span>Runway 영상</span><i>→</i><span>음성·자막·음악</span><i>→</i><span>9:16 MP4</span>
           </div>
-          <button className={styles.primary} type="button" onClick={() => void renderVideo()} disabled={Boolean(busy) || !projectId}>
-            {busy === "render" ? "영상 제작·합성 중..." : "Runway·최종 MP4 제작"}
-          </button>
+          <div className={styles.phaseActions}>
+            <button className={styles.subtle} type="button" onClick={() => void downloadCapCutPackage()} disabled={Boolean(busy) || !projectId}>
+              {busy === "capcut" ? "CapCut 패키지 생성 중..." : "CapCut 가져오기 ZIP"}
+            </button>
+            <button className={styles.primary} type="button" onClick={() => void renderVideo()} disabled={Boolean(busy) || !projectId}>
+              {busy === "render" ? "영상 제작·합성 중..." : "Runway·최종 MP4 제작"}
+            </button>
+          </div>
           {finalVideoUrl && (
             <div className={styles.videoResult}>
               <video controls playsInline src={finalVideoUrl} />
@@ -2059,14 +2154,14 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
     <main className={styles.shell}>
       <header className={styles.hero}>
         <div>
-          <span>GY SHOPPING SHORTS CANVAS · PHASE 5</span>
-          <h1>쇼핑 쇼츠 AI 제작 캔버스</h1>
+          <span>DREAM Y · KOREAN SHORTS · PHASE 5</span>
+          <h1>한국형 쇼츠 제작</h1>
           <p>상품 하나를 기준으로 대본·사진·내 영상 Gemini 선별·음성·음악·미리캔버스 썸네일·최종 MP4·게시 성과 학습까지 한 프로젝트 안에서 이어서 제작합니다.</p>
         </div>
         <div className={styles.heroSide}>
           <div className={styles.progressRing}><strong>{progressPercent}%</strong><span>{completedCount}/{steps.length} 완료</span></div>
           <button type="button" className={styles.autoButton} onClick={() => void runAutomatic()} disabled={Boolean(busy)}>
-            {busy === "auto" ? "Dream Y 자동 제작 중..." : "완전자동 제작 시작"}
+            {busy === "auto" ? "Dream Y 자동 제작 중..." : "AI 제작 자동 실행"}
           </button>
         </div>
       </header>
@@ -2074,12 +2169,12 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       <section className={styles.modeBar}>
         <div>
           <b>제작 모드</b>
-          <span>같은 프로젝트를 수동·반자동·자동으로 운영합니다.</span>
+          <span>AI 제작은 자동화하고 미리캔버스·CapCut 최종 확인은 대표가 진행합니다.</span>
         </div>
         <div className={styles.modeButtons}>
           <button className={mode === "manual" ? styles.activeMode : ""} onClick={() => setMode("manual")}>수동</button>
           <button className={mode === "guided" ? styles.activeMode : ""} onClick={() => setMode("guided")}>반자동</button>
-          <button className={mode === "auto" ? styles.activeMode : ""} onClick={() => setMode("auto")}>완전자동</button>
+          <button className={mode === "auto" ? styles.activeMode : ""} onClick={() => setMode("auto")}>AI 자동</button>
         </div>
       </section>
 
@@ -2112,7 +2207,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
               <small>{currentStep.number} · {currentStep.label}</small>
               <strong>{productName || "새 쇼핑 쇼츠 프로젝트"}</strong>
             </div>
-            <span>{mode === "manual" ? "대표 직접 제어" : mode === "guided" ? "Dream Y 단계별 제작" : "Dream Y 완전자동"}</span>
+            <span>{mode === "manual" ? "대표 직접 제어" : mode === "guided" ? "Dream Y 단계별 제작" : "Dream Y AI 자동 제작"}</span>
           </div>
           {renderStepContent()}
         </div>

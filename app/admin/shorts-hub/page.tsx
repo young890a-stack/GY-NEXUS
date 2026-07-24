@@ -1,10 +1,10 @@
-import ShortsProductionHub from "@/components/shorts-hub/ShortsProductionHub";
+import ShortsTrackHub from "@/components/shorts-hub/ShortsTrackHub";
 
 export const metadata = {
-  title: "쇼핑 쇼츠 AI 제작 캔버스 Phase 5 · GY-NEXUS",
-  description: "Gemini 선별, 음성·음악 타임라인, 미리캔버스 썸네일 패키지, 게시 성과·클릭·판매 학습 엔진까지 한 번에 관리합니다.",
+  title: "Dream Y 쇼츠 제작센터 · GY-NEXUS",
+  description: "한국형 쇼츠와 도우인·샤오홍슈 중국 소스 현지화 쇼츠의 제작 과정을 분리해 안내합니다.",
 };
 
 export default function ShortsHubPage() {
-  return <ShortsProductionHub />;
+  return <ShortsTrackHub />;
 }
