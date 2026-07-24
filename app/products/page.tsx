@@ -6,6 +6,11 @@ import type { Product } from "@/types/product";
 import styles from "./products.module.css";
 
 export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "쇼츠로 확인하는 추천상품",
+  description:
+    "영상과 핵심 설명으로 먼저 확인하고 판매처에서 현재 가격을 비교할 수 있는 GY Labs 추천상품입니다.",
+};
 
 const categories = [
   ["all", "전체"],

@@ -29,6 +29,24 @@ const process = [
   "상품 링크·광고 문의 연결",
 ];
 
+const projectChecklist = [
+  {
+    label: "SCOPE 01",
+    title: "시작 전에 범위를 확정합니다",
+    text: "영상 길이, 사용 채널, 납기와 수정 범위를 먼저 정리해 예상 밖의 추가 작업을 줄입니다.",
+  },
+  {
+    label: "SCOPE 02",
+    title: "판매 포인트를 한 문장으로 맞춥니다",
+    text: "누가 왜 사야 하는지 합의한 뒤 장면, 자막과 CTA가 같은 목표를 보도록 설계합니다.",
+  },
+  {
+    label: "SCOPE 03",
+    title: "납품물을 한 번에 정리합니다",
+    text: "세로형 영상과 자막, 썸네일, 제목·판매 문구 등 필요한 결과물을 문의 단계에서 안내합니다.",
+  },
+];
+
 export default function CommerceAgencyLanding({
   videos,
 }: {
@@ -87,8 +105,13 @@ export default function CommerceAgencyLanding({
               ) : (
                 <div className={styles.videoEmpty}>
                   <span>GY SALES VIDEO</span>
-                  <strong>완성 영상이 이곳에서 바로 재생됩니다.</strong>
-                  <p>Revenue Shorts OS에서 공개 버튼을 누르면 메인 대표 영상으로 자동 연결됩니다.</p>
+                  <strong>25초 안에 구매 이유를 설계합니다.</strong>
+                  <div className={styles.storyboard} aria-label="쇼핑 쇼츠 기본 구성 예시">
+                    <div><b>0–3초</b><small>시선을 잡는 문제 제기</small></div>
+                    <div><b>4–15초</b><small>사용 장면과 핵심 근거</small></div>
+                    <div><b>16–25초</b><small>혜택 요약과 행동 유도</small></div>
+                  </div>
+                  <p>공개 가능한 작업 영상은 포트폴리오에 순차적으로 업데이트됩니다.</p>
                 </div>
               )}
             </div>
@@ -140,6 +163,27 @@ export default function CommerceAgencyLanding({
             <div className={styles.processGrid}>
               {process.map((item, index) => (
                 <div key={item}><span>{String(index + 1).padStart(2, "0")}</span><strong>{item}</strong></div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.scopeSection}>
+          <div className="container">
+            <div className={styles.sectionHead}>
+              <div>
+                <span>BEFORE WE START</span>
+                <h2>좋은 결과는 제작 전에<br />기준부터 선명합니다.</h2>
+              </div>
+              <p>문의만 남기고 기다리지 않도록, 상담에서 확인할 항목과 받게 될 결과물을 미리 설명합니다.</p>
+            </div>
+            <div className={styles.scopeGrid}>
+              {projectChecklist.map((item) => (
+                <article key={item.label}>
+                  <span>{item.label}</span>
+                  <h3>{item.title}</h3>
+                  <p>{item.text}</p>
+                </article>
               ))}
             </div>
           </div>

@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "쇼핑 쇼츠·광고 영상 제작 문의 · GY Labs",
+  title: "쇼핑 쇼츠·광고 영상 제작 문의",
   description: "상품 판매를 위한 쇼핑 쇼츠, 광고 영상, 콘텐츠 운영 대행 상담",
 };
 

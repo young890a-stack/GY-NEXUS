@@ -5,7 +5,7 @@ import { getPublicShowcaseVideos } from "@/lib/public-showcase";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "쇼핑 쇼츠 영상 포트폴리오 · GY Labs",
+  title: "쇼핑 쇼츠 영상 포트폴리오",
   description: "상품 판매를 위해 제작한 쇼핑 쇼츠와 광고 영상 포트폴리오",
 };
 
