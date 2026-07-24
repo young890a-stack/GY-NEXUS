@@ -1049,7 +1049,7 @@ export default function ShortsProductionHub() {
     let uploaded: string[] = [];
     if (imageFiles.length) {
       const form = new FormData();
-      imageFiles.slice(0, 4).forEach((file) => form.append("images", file));
+      imageFiles.slice(0, 6).forEach((file) => form.append("images", file));
       const data = await jsonRequest<{ success?: boolean; urls?: string[] }>(
         "/api/creative-studio-pro/references",
         { method: "POST", body: form },
@@ -1058,7 +1058,7 @@ export default function ShortsProductionHub() {
     }
 
     const directImage = productImageUrl.trim().startsWith("https://") ? productImageUrl.trim() : "";
-    const urls = Array.from(new Set([...uploaded, directImage].filter(Boolean))).slice(0, 4);
+    const urls = Array.from(new Set([...uploaded, directImage].filter(Boolean))).slice(0, 6);
 
     if (!urls.length) {
       throw new Error("실제 상품 사진 1장 이상을 선택하거나 상품 이미지 주소를 입력해주세요.");
@@ -1630,7 +1630,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
     const advice: Record<StepKey, string> = {
       product: "제휴링크를 붙여넣고 상품 불러오기를 먼저 실행하세요. 상품명·이미지·가격이 부족하면 직접 보완할 수 있습니다.",
       strategy: "첫 2초 훅과 대본을 만든 뒤 대표님 말투에 맞게 수정하세요. 수정한 대본은 프로젝트 제작 지시문에 들어갑니다.",
-      assets: "실제 상품 사진은 최소 1장, 가능하면 서로 다른 각도 2~4장이 좋습니다. 상품 형태 정확도가 올라갑니다.",
+      assets: "상품 사진은 최대 6장입니다. 정면·좌우 측면·후면·상단·하단처럼 서로 다른 각도를 채우면 형태 검수 정확도가 올라갑니다.",
       project: "한국형 직접 제작 또는 사진 한 장 AI 쇼츠 방식을 선택하고 프로젝트를 생성하세요. 중국 소스는 별도 현지화 메뉴에서 진행합니다.",
       analysis: "직접 촬영하거나 사용 권한이 있는 영상을 올리면 Gemini가 첫 2초 훅·사용·디테일·CTA 구간을 자동 선별합니다.",
       scenes: "AI가 상품 장면을 만들고 85점 기준으로 자동 검수합니다. 불량 장면만 다시 생성할 수 있는 기반입니다.",
@@ -1747,9 +1747,9 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
         <section className={styles.stageCard}>
           <div className={styles.stageHeading}><div><span>STEP 03</span><h2>상품 사진 소재</h2></div><strong>{referenceImageUrls.length}장 연결</strong></div>
           <label className={styles.uploadBox}>
-            <input type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={(event: ChangeEvent<HTMLInputElement>) => setImageFiles(Array.from(event.target.files || []).slice(0, 4))} />
-            <span>PNG·JPG·WEBP 상품 사진 1~4장 선택</span>
-            <small>서로 다른 각도의 실제 상품 사진을 권장합니다.</small>
+            <input type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={(event: ChangeEvent<HTMLInputElement>) => setImageFiles(Array.from(event.target.files || []).slice(0, 6))} />
+            <span>PNG·JPG·WEBP 상품 사진 1~6장 선택</span>
+            <small>정면·좌우·후면·상단·하단처럼 서로 다른 각도의 실제 상품 사진을 권장합니다.</small>
           </label>
           {imageFiles.length > 0 && <div className={styles.fileChips}>{imageFiles.map((file) => <span key={`${file.name}-${file.size}`}>{file.name}</span>)}</div>}
           {productImageUrl && <p className={styles.helper}>제휴 상품 이미지 주소도 함께 사용할 수 있습니다.</p>}

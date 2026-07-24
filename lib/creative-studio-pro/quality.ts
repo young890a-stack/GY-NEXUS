@@ -177,7 +177,7 @@ export async function analyzeProductVisualProfile(input: {
       "서로 다른 각도와 세부 구조를 판별하기 충분한지 referenceCoverageScore를 엄격히 평가한다.",
     ].join("\n"),
   }];
-  input.referenceImageUrls.slice(0, 4).forEach((url, index) => {
+  input.referenceImageUrls.slice(0, 6).forEach((url, index) => {
     content.push({ type: "input_text", text: `PRODUCT FACT PHOTO ${index + 1}` });
     content.push({ type: "input_image", image_url: url, detail: "original" });
   });
@@ -258,7 +258,7 @@ export async function reviewSceneImageCandidates(input: {
     },
   ];
 
-  input.referenceImageUrls.slice(0, 4).forEach((url, index) => {
+  input.referenceImageUrls.slice(0, 6).forEach((url, index) => {
     content.push({ type: "input_text", text: `PRODUCT REFERENCE ${index + 1}` });
     content.push({ type: "input_image", image_url: url, detail: "original" });
   });

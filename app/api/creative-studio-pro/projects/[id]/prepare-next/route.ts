@@ -19,7 +19,7 @@ function referenceUrls(project: Record<string, unknown>) {
     ? project.reference_image_urls.map(String)
     : [];
   const fallback = typeof project.source_image_url === "string" ? [project.source_image_url] : [];
-  return Array.from(new Set([...stored, ...fallback].map((value) => value.trim()).filter(Boolean))).slice(0, 4);
+  return Array.from(new Set([...stored, ...fallback].map((value) => value.trim()).filter(Boolean))).slice(0, 6);
 }
 
 function objectValue(value: unknown): Record<string, unknown> {

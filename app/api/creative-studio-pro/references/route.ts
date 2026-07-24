@@ -16,10 +16,10 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const files = form.getAll("images").filter((item): item is File => item instanceof File);
     const analysisMode = String(form.get("purpose") || "") === "analysis";
-    const maxFiles = analysisMode ? 8 : 4;
+    const maxFiles = analysisMode ? 8 : 6;
     if (!files.length || files.length > maxFiles) {
       return NextResponse.json(
-        { success: false, message: analysisMode ? "분석 프레임을 1~8장 선택해주세요." : "상품 사진을 1~4장 선택해주세요. 정확도를 위해 2장 이상을 권장합니다." },
+        { success: false, message: analysisMode ? "분석 프레임을 1~8장 선택해주세요." : "상품 사진을 1~6장 선택해주세요. 정면·좌우·후면·상단·하단처럼 서로 다른 각도를 권장합니다." },
         { status: 400 },
       );
     }

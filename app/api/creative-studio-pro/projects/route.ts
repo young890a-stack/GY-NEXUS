@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const referenceImageUrls = Array.from(new Set([
       ...(Array.isArray(input.referenceImageUrls) ? input.referenceImageUrls : []),
       input.sourceImageUrl || "",
-    ].map((value) => value.trim()).filter(Boolean))).slice(0, 4);
+    ].map((value) => value.trim()).filter(Boolean))).slice(0, 6);
     const sourceMode = input.sourceMode === "single-photo-commerce" ? "single-photo-commerce" : "premium-multi-photo";
     const minimumReferences = sourceMode === "single-photo-commerce" ? 1 : 2;
     if (referenceImageUrls.length < minimumReferences) {

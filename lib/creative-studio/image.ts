@@ -133,7 +133,7 @@ export async function generateReferenceImageCandidates(input: ReferenceImageCand
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const continuityUrls = input.continuityImageUrls?.slice(0, 1) || [];
   const referenceFiles = await Promise.all(
-    [...input.referenceImageUrls.slice(0, 4), ...continuityUrls]
+    [...input.referenceImageUrls.slice(0, 6), ...continuityUrls]
       .map((url, index) => downloadReferenceImage(url, index)),
   );
   const prompt = [
@@ -176,7 +176,7 @@ export async function finalizeReferenceImage(input: {
   const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const continuityUrls = input.continuityImageUrls?.slice(0, 1) || [];
-  const urls = [...input.referenceImageUrls.slice(0, 4), ...continuityUrls, input.draftImageUrl];
+  const urls = [...input.referenceImageUrls.slice(0, 6), ...continuityUrls, input.draftImageUrl];
   const files = await Promise.all(urls.map((url, index) => downloadReferenceImage(url, index)));
   const response = await openai.images.edit({
     model,
