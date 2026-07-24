@@ -30,6 +30,7 @@ export type ProProjectInput = {
   platformTargets?: Array<"youtube" | "instagram" | "douyin" | "xiaohongshu">;
   qualityThreshold?: number;
   maxImageRetries?: number;
+  playbackSpeed?: 1 | 1.2 | 1.4;
 };
 
 export type SceneQualityStatus =

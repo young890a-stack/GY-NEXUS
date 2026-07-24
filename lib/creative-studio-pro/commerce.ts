@@ -181,6 +181,21 @@ const schema = {
   ],
 } as const;
 
+const koreanSchema = {
+  ...schema,
+  properties: {
+    ...schema.properties,
+    platformVersions: {
+      ...schema.properties.platformVersions,
+      properties: {
+        youtube: schema.properties.platformVersions.properties.youtube,
+        instagram: schema.properties.platformVersions.properties.instagram,
+      },
+      required: ["youtube", "instagram"],
+    },
+  },
+} as const;
+
 const cleanStrings = (value: unknown, limit: number) =>
   Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean).slice(0, limit) : [];
 
@@ -291,6 +306,8 @@ export async function generateCommercePackage(input: {
   if (!allowedFacts.length) {
     throw new Error("광고 생성에 사용할 확인된 상품 설명이 없습니다. 차단 화면 문구가 아닌 실제 상품 정보를 입력해주세요.");
   }
+  const platformTargets = new Set((input.platformTargets || ["youtube"]).map((item) => String(item).toLowerCase()));
+  const koreanOnly = Array.from(platformTargets).every((target) => target === "youtube" || target === "instagram");
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const model = process.env.OPENAI_FAST_MODEL || process.env.OPENAI_STRATEGY_MODEL || process.env.OPENAI_QUALITY_MODEL || "gpt-5.6-sol";
@@ -323,28 +340,31 @@ export async function generateCommercePackage(input: {
           "썸네일 headline은 12자 안팎, accent는 8자 안팎으로 쓰고 과장된 99%, 무조건, 역대급 같은 문구는 금지한다.",
           `CTA는 쇼츠 설명 URL이 클릭되지 않을 수 있으므로 '프로필 링크의 상품 번호 ${input.productCode} 확인' 방식으로 작성한다.`,
           "description에는 상품 요약과 제휴 고지를 포함한다. 해시태그는 실제 상품과 관련된 것만 작성한다.",
-          "YouTube·Instagram용 한국어 버전, Douyin용 자연스러운 중국어 간체 버전, Xiaohongshu용 6~9장 사진 노트를 각각 만든다.",
-          "중국어 버전도 검증된 상품 사실만 번역한다. 한국 판매 페이지·링크의 제공 여부, 지역별 접근성이나 작동 여부를 언급하지 않는다.",
-          `도우인 caption과 샤오홍슈 body 각각에 다음 제휴 고지를 반드시 포함한다: ${chineseAffiliateDisclosure}`,
-          "샤오홍슈 카드 visualDirection은 제공된 상품 사진만으로 제작 가능한 확대·이동·배경·기능 강조 지시로 쓴다.",
-        ].join("\n"),
+          koreanOnly
+            ? "한국형 쇼츠이므로 YouTube·Instagram용 한국어 버전만 만든다. 도우인·샤오홍슈 콘텐츠는 만들지 않는다."
+            : "YouTube·Instagram용 한국어 버전, Douyin용 자연스러운 중국어 간체 버전, Xiaohongshu용 6~9장 사진 노트를 각각 만든다.",
+          koreanOnly ? "" : "중국어 버전도 검증된 상품 사실만 번역한다. 한국 판매 페이지·링크의 제공 여부, 지역별 접근성이나 작동 여부를 언급하지 않는다.",
+          koreanOnly ? "" : `도우인 caption과 샤오홍슈 body 각각에 다음 제휴 고지를 반드시 포함한다: ${chineseAffiliateDisclosure}`,
+          koreanOnly ? "" : "샤오홍슈 카드 visualDirection은 제공된 상품 사진만으로 제작 가능한 확대·이동·배경·기능 강조 지시로 쓴다.",
+        ].filter(Boolean).join("\n"),
       }],
     }],
     text: {
       format: {
         type: "json_schema",
-        name: "gy_photo_commerce_package",
+        name: koreanOnly ? "gy_korean_commerce_package" : "gy_photo_commerce_package",
         strict: true,
-        schema,
+        schema: koreanOnly ? koreanSchema : schema,
       },
     },
-    max_output_tokens: 6000,
+    max_output_tokens: koreanOnly ? 3200 : 6000,
   });
 
   const raw = response.output_text?.trim();
   if (!raw) throw new Error("쇼핑 콘텐츠 패키지 결과가 비어 있습니다.");
   const parsed = JSON.parse(raw) as CommercePackage;
-  const platformTargets = new Set((input.platformTargets || ["youtube"]).map((item) => String(item).toLowerCase()));
+  const parsedDouyin = parsed.platformVersions.douyin || { title: "", caption: "", scriptSimplifiedChinese: "", hashtags: [] };
+  const parsedXiaohongshu = parsed.platformVersions.xiaohongshu || { title: "", body: "", hashtags: [], cards: [] };
   const hookOptions = cleanStrings(parsed.hookOptions, 3).map(neutralizeUnsupportedModifiers);
   const voiceover = fitBodyToDuration(neutralizeUnsupportedModifiers(String(parsed.voiceover || "")), hookOptions, input.durationSeconds);
   const result: CommercePackage = {
@@ -377,16 +397,16 @@ export async function generateCommercePackage(input: {
         script: voiceover,
       },
       douyin: {
-        ...parsed.platformVersions.douyin,
-        title: neutralizeUnsupportedModifiers(parsed.platformVersions.douyin.title),
-        caption: ensureChineseAffiliateDisclosure(parsed.platformVersions.douyin.caption),
-        scriptSimplifiedChinese: neutralizeUnsupportedModifiers(parsed.platformVersions.douyin.scriptSimplifiedChinese),
+        ...parsedDouyin,
+        title: neutralizeUnsupportedModifiers(parsedDouyin.title),
+        caption: koreanOnly ? "" : ensureChineseAffiliateDisclosure(parsedDouyin.caption),
+        scriptSimplifiedChinese: neutralizeUnsupportedModifiers(parsedDouyin.scriptSimplifiedChinese),
       },
       xiaohongshu: {
-        ...parsed.platformVersions.xiaohongshu,
-        title: neutralizeUnsupportedModifiers(parsed.platformVersions.xiaohongshu.title),
-        body: ensureChineseAffiliateDisclosure(parsed.platformVersions.xiaohongshu.body),
-        cards: parsed.platformVersions.xiaohongshu.cards.map((card) => ({
+        ...parsedXiaohongshu,
+        title: neutralizeUnsupportedModifiers(parsedXiaohongshu.title),
+        body: koreanOnly ? "" : ensureChineseAffiliateDisclosure(parsedXiaohongshu.body),
+        cards: parsedXiaohongshu.cards.map((card) => ({
           ...card,
           headline: neutralizeUnsupportedModifiers(card.headline),
           body: neutralizeUnsupportedModifiers(card.body),
@@ -399,7 +419,7 @@ export async function generateCommercePackage(input: {
     || result.thumbnailOptions.length !== 3
     || !result.voiceover
     || !result.platformVersions?.youtube
-    || result.platformVersions.xiaohongshu.cards.length < 6
+    || (!koreanOnly && result.platformVersions.xiaohongshu.cards.length < 6)
   ) {
     throw new Error("쇼핑 콘텐츠 패키지 형식이 올바르지 않습니다.");
   }

@@ -75,8 +75,23 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       });
     }
     const durationSeconds = Number(project.duration_seconds) || 20;
+    const platformTargets = Array.isArray(settings.platformTargets) ? settings.platformTargets.map(String) : ["youtube"];
+    const koreanOnly = platformTargets.every((target) => target === "youtube" || target === "instagram");
+    const koreanDirectTrend = {
+      model: "korean-direct",
+      result: {
+        chineseKeywords: [],
+        discoveryLinks: [],
+        hookPatterns: [],
+        sellingAngles: [],
+        originalShotPlan: [],
+        referenceRule: "한국형 쇼츠는 중국 소스 분석을 실행하지 않습니다.",
+        generatedAt: new Date().toISOString(),
+        model: "korean-direct",
+      },
+    };
     const [trend, commerce] = await Promise.all([
-      generateTrendIntelligence({
+      koreanOnly ? Promise.resolve(koreanDirectTrend) : generateTrendIntelligence({
         productName: project.product_name,
         productDescription: project.product_description || "",
         durationSeconds,
@@ -89,7 +104,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         style: project.style || "cinematic-product",
         productUrl: typeof settings.productUrl === "string" ? settings.productUrl : undefined,
         affiliateUrl: typeof settings.affiliateUrl === "string" ? settings.affiliateUrl : undefined,
-        platformTargets: Array.isArray(settings.platformTargets) ? settings.platformTargets.map(String) : undefined,
+        platformTargets,
         sceneNarrations: (scenes || []).map((scene) => String(scene.narration || "")).filter(Boolean),
         productCode,
       }),
@@ -125,7 +140,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       trendIntelligence: trend.result,
       package: commerce.result,
       elapsedMs: Date.now() - startedAt,
-      message: "중국 탐색 키워드·장면 분석·4개 플랫폼 게시 패키지를 병렬 생성했습니다.",
+      message: koreanOnly
+        ? "한국형 쇼츠 전용으로 중국 분석을 생략하고 한국 플랫폼 패키지와 품질검수를 완료했습니다."
+        : "중국 탐색 키워드·장면 분석·4개 플랫폼 게시 패키지를 병렬 생성했습니다.",
     });
   } catch (error) {
     return NextResponse.json({

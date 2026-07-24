@@ -344,6 +344,7 @@ export default function ShortsProductionHub() {
   const [selectedTrendKeywords, setSelectedTrendKeywords] = useState<string[]>([]);
 
   const [duration, setDuration] = useState<15 | 20 | 25 | 30>(20);
+  const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.2 | 1.4>(1);
   const [tone, setTone] = useState("친근하고 재미있는 생활 밀착형");
   const [style, setStyle] = useState<"problem-solution" | "ugc-review" | "how-to" | "cinematic-product">("problem-solution");
   const [voicePreset, setVoicePreset] = useState<VoicePreset>("marin");
@@ -1216,6 +1217,7 @@ export default function ShortsProductionHub() {
         platformTargets: ["youtube", "instagram"],
         qualityThreshold: 85,
         maxImageRetries: 2,
+        playbackSpeed,
       }),
     });
 
@@ -1764,6 +1766,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       return (
         <section className={styles.stageCard}>
           <div className={styles.stageHeading}><div><span>STEP 04</span><h2>제작 방식과 프로젝트</h2></div><strong>{projectId ? "저장됨" : "미생성"}</strong></div>
+          <p className={styles.helper}>한국형 쇼츠는 중국 키워드·플랫폼 패키지를 생략하는 빠른 생성 경로를 사용합니다. 광고 품질검수와 상품 사진 검수는 그대로 유지됩니다.</p>
           <div className={styles.choiceGrid} style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
             <button type="button" className={sourceStrategy === "korean-original" ? styles.selectedChoice : ""} onClick={() => setSourceStrategy("korean-original")}>
               <b>한국형 직접 제작</b><span>내 상품 사진과 한국형 대본 중심</span>
@@ -1779,6 +1782,11 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
               <option value="how-to">사용법형</option>
               <option value="cinematic-product">시네마틱 제품형</option>
             </select></label>
+            <label>영상 배속<select value={playbackSpeed} onChange={(event: ChangeEvent<HTMLSelectElement>) => setPlaybackSpeed(Number(event.target.value) as 1 | 1.2 | 1.4)}>
+              <option value={1}>1.0x · 자연스럽게</option>
+              <option value={1.2}>1.2x · 빠른 쇼츠</option>
+              <option value={1.4}>1.4x · 매우 빠르게</option>
+            </select><small className={styles.helper}>영상 편집 배속이며 프로젝트 생성 속도와는 별개입니다.</small></label>
             <label>품질 기준<input value="85점 · 최대 2회 재생성" readOnly /></label>
           </div>
           <button className={styles.primary} type="button" onClick={() => void createProject()} disabled={Boolean(busy)}>
