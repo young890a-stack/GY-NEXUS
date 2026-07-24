@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { getGeminiApiKey } from "@/lib/ai/gemini";
+import { withStructuredJsonRetry } from "@/lib/ai/structured-json";
 
 export type GeminiSelectedCut = {
   order: number;
@@ -98,38 +99,41 @@ export async function analyzeVideoFramesWithGemini(input: {
     || process.env.GEMINI_REVIEW_MODEL?.trim()
     || "gemini-3.5-flash";
   const client = new GoogleGenAI({ apiKey });
-  const interaction = await client.interactions.create({
-    model,
-    system_instruction:
-      "당신은 GY-NEXUS의 한국 쇼핑 쇼츠 영상 편집감독이다. 대표가 직접 촬영하거나 사용 권한을 가진 영상의 프레임과 시간정보를 보고, 제품이 잘 보이고 움직임이 명확하며 첫 2초에 시선을 잡는 구간만 선택한다. 과장광고, 흐림, 손떨림, 워터마크, 불필요한 얼굴 노출, 제품이 가려지는 장면은 감점한다. 결과는 제공된 JSON 스키마만 따른다.",
-    input: [
-      {
-        type: "text",
-        text: [
-          `상품명: ${input.productName}`,
-          `상품 설명: ${input.productDescription || "없음"}`,
-          `원본 영상 길이: ${input.sourceDurationSeconds.toFixed(2)}초`,
-          `완성 쇼츠 목표 길이: ${input.targetDurationSeconds}초`,
-          `프레임 시간표: ${JSON.stringify(input.frameTimestamps.slice(0, 12))}`,
-          "추천 컷은 원본 영상 시간 기준 sourceStartSecond와 sourceEndSecond를 제시한다.",
-          "각 컷 길이는 0.7~2.5초로 하고, 첫 컷은 결과·문제·강한 제품 동작 중 하나가 즉시 보여야 한다.",
-          "순서는 훅 → 문제/상황 → 사용 → 제품 디테일/혜택 → CTA가 되게 구성한다.",
-          "같은 구간을 반복하지 말고 전체 추천 컷 길이 합이 목표 길이에 최대한 가까워지게 한다.",
-          "자막 제안은 한 줄 16자 이내의 자연스러운 한국어로 작성한다.",
-        ].join("\n"),
-      },
-      ...frameInputs,
-    ] as never,
-    response_format: {
-      type: "text",
-      mime_type: "application/json",
-      schema,
+  const parsed = await withStructuredJsonRetry<Partial<GeminiMediaAnalysis>>({
+    label: "Gemini 소재 분석",
+    request: async () => {
+      const interaction = await client.interactions.create({
+        model,
+        system_instruction:
+          "당신은 GY-NEXUS의 한국 쇼핑 쇼츠 영상 편집감독이다. 대표가 직접 촬영하거나 사용 권한을 가진 영상의 프레임과 시간정보를 보고, 제품이 잘 보이고 움직임이 명확하며 첫 2초에 시선을 잡는 구간만 선택한다. 과장광고, 흐림, 손떨림, 워터마크, 불필요한 얼굴 노출, 제품이 가려지는 장면은 감점한다. 결과는 제공된 JSON 스키마만 따른다.",
+        input: [
+          {
+            type: "text",
+            text: [
+              `상품명: ${input.productName}`,
+              `상품 설명: ${input.productDescription || "없음"}`,
+              `원본 영상 길이: ${input.sourceDurationSeconds.toFixed(2)}초`,
+              `완성 쇼츠 목표 길이: ${input.targetDurationSeconds}초`,
+              `프레임 시간표: ${JSON.stringify(input.frameTimestamps.slice(0, 12))}`,
+              "추천 컷은 원본 영상 시간 기준 sourceStartSecond와 sourceEndSecond를 제시한다.",
+              "각 컷 길이는 0.7~2.5초로 하고, 첫 컷은 결과·문제·강한 제품 동작 중 하나가 즉시 보여야 한다.",
+              "순서는 훅 → 문제/상황 → 사용 → 제품 디테일/혜택 → CTA가 되게 구성한다.",
+              "같은 구간을 반복하지 말고 전체 추천 컷 길이 합이 목표 길이에 최대한 가까워지게 한다.",
+              "자막 제안은 한 줄 16자 이내의 자연스러운 한국어로 작성한다.",
+            ].join("\n"),
+          },
+          ...frameInputs,
+        ] as never,
+        response_format: {
+          type: "text",
+          mime_type: "application/json",
+          schema,
+        },
+      });
+      return interaction.output_text;
     },
+    validate: (value) => Boolean(value && Array.isArray(value.recommendedCuts)),
   });
-
-  const raw = interaction.output_text?.trim();
-  if (!raw) throw new Error("Gemini 소재 분석 결과가 비어 있습니다.");
-  const parsed = JSON.parse(raw) as Partial<GeminiMediaAnalysis>;
   const sourceDuration = Math.max(1, Number(input.sourceDurationSeconds) || 1);
   const target = Math.max(15, Math.min(30, Number(input.targetDurationSeconds) || 20));
   let outputCursor = 0;

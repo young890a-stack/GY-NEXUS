@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { GeneratedImageCandidate } from "@/lib/creative-studio/types";
+import { withStructuredJsonRetry } from "@/lib/ai/structured-json";
 import type {
   ProductVisualProfile,
   SceneImageCandidate,
@@ -182,23 +183,28 @@ export async function analyzeProductVisualProfile(input: {
     content.push({ type: "input_image", image_url: url, detail: "original" });
   });
 
-  const response = await openai.responses.create({
-    model,
-    reasoning: { effort: "high" },
-    input: [{ role: "user", content }],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "gy_product_visual_profile",
-        strict: true,
-        schema: profileSchema,
-      },
+  const parsed = await withStructuredJsonRetry<ProductVisualProfile>({
+    label: "상품 시각 정체성 분석",
+    request: async (attempt) => {
+      const response = await openai.responses.create({
+        model,
+        reasoning: { effort: "high" },
+        input: [{ role: "user", content }],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "gy_product_visual_profile",
+            strict: true,
+            schema: profileSchema,
+          },
+        },
+        max_output_tokens: attempt === 0 ? 2800 : 4400,
+      });
+      return response.output_text;
     },
-    max_output_tokens: 2200,
+    validate: (value) =>
+      Boolean(value && typeof value === "object" && Array.isArray(value.forbiddenChanges)),
   });
-  const raw = response.output_text?.trim();
-  if (!raw) throw new Error("상품 시각 정체성 분석 결과가 비어 있습니다.");
-  const parsed = JSON.parse(raw) as ProductVisualProfile;
   const profile: ProductVisualProfile = {
     identitySummary: String(parsed.identitySummary || input.productName),
     category: String(parsed.category || "상품"),
@@ -271,23 +277,27 @@ export async function reviewSceneImageCandidates(input: {
     content.push({ type: "input_image", image_url: candidate.assetUrl, detail: "original" });
   });
 
-  const response = await openai.responses.create({
-    model,
-    reasoning: { effort: "high" },
-    input: [{ role: "user", content }],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "gy_scene_image_quality_v2",
-        strict: true,
-        schema: qualitySchema,
-      },
+  const payload = await withStructuredJsonRetry<QualityPayload>({
+    label: "이미지 품질검수",
+    request: async (attempt) => {
+      const response = await openai.responses.create({
+        model,
+        reasoning: { effort: "high" },
+        input: [{ role: "user", content }],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "gy_scene_image_quality_v2",
+            strict: true,
+            schema: qualitySchema,
+          },
+        },
+        max_output_tokens: attempt === 0 ? 4600 : 7000,
+      });
+      return response.output_text;
     },
-    max_output_tokens: 3400,
+    validate: (value) => Boolean(value && Array.isArray(value.candidates)),
   });
-  const raw = response.output_text?.trim();
-  if (!raw) throw new Error("이미지 품질검수 결과가 비어 있습니다.");
-  const payload = JSON.parse(raw) as QualityPayload;
 
   const assessments = input.candidates.map((candidate, index) => {
     const rawAssessment = payload.candidates.find((item) => item.index === index) || payload.candidates[index];
