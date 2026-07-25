@@ -6,6 +6,7 @@ const PUBLIC_API_PATHS = new Set([
   "/api/auth/access",
   "/api/click",
   "/api/customer/inquiries",
+  "/api/queues/scene-master",
 ]);
 
 function isPublicApi(pathname: string) {

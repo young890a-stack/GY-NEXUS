@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import type { ContentFactoryPackage } from "@/lib/content-factory/types";
 import styles from "./ShortsProductionHub.module.css";
 
@@ -247,6 +247,22 @@ type ProjectResponse = {
   } | null;
 };
 
+type BackgroundSceneJob = {
+  jobId: string;
+  projectId: string;
+  status: "queued" | "processing" | "retry" | "completed" | "failed" | "cancelled";
+  currentStep: string;
+  progress: number;
+  approvedScenes: number;
+  totalScenes: number;
+  attempts: number;
+  maxAttempts: number;
+  message: string;
+  lastError: string;
+  notificationUnread: boolean;
+  updatedAt: string;
+};
+
 const initialSteps: CanvasStep[] = [
   { key: "product", number: "01", label: "상품", description: "제휴링크·상품정보", state: "waiting", detail: "" },
   { key: "strategy", number: "02", label: "키워드·대본", description: "훅·대본·SEO", state: "waiting", detail: "" },
@@ -407,6 +423,9 @@ export default function ShortsProductionHub() {
   const [projectId, setProjectId] = useState("");
   const [projectDetail, setProjectDetail] = useState<ProjectRecord | null>(null);
   const [projectScenes, setProjectScenes] = useState<ProjectScene[]>([]);
+  const [backgroundSceneJob, setBackgroundSceneJob] = useState<BackgroundSceneJob | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+  const notifiedSceneJobRef = useRef("");
   const [finalVideoUrl, setFinalVideoUrl] = useState("");
   const [publishQueued, setPublishQueued] = useState(false);
 
@@ -421,6 +440,77 @@ export default function ShortsProductionHub() {
   const progressPercent = Math.round((completedCount / steps.length) * 100);
   const currentStep = steps.find((step) => step.key === activeStep) || steps[0];
   const nextWaitingStep = steps.find((step) => step.state !== "done");
+
+  useEffect(() => {
+    if (typeof Notification !== "undefined") setNotificationPermission(Notification.permission);
+  }, []);
+
+  useEffect(() => {
+    if (!projectId) {
+      setBackgroundSceneJob(null);
+      return;
+    }
+    let disposed = false;
+    let polling = false;
+
+    const refresh = async () => {
+      if (polling || disposed) return;
+      polling = true;
+      try {
+        const data = await jsonRequest<{ jobId?: string; job?: Omit<BackgroundSceneJob, "jobId"> | null }>(
+          `/api/creative-studio-pro/projects/${projectId}/scene-job`,
+          { cache: "no-store" },
+        );
+        if (disposed) return;
+        const nextJob = data.job ? { ...data.job, jobId: String(data.jobId || "") } : null;
+        setBackgroundSceneJob(nextJob);
+        if (!nextJob) return;
+
+        const active = ["queued", "processing", "retry"].includes(nextJob.status);
+        if (active) {
+          markStep("scenes", "running", `${nextJob.approvedScenes}/${nextJob.totalScenes || 0}개 완료`);
+          setMessage(nextJob.message);
+        }
+
+        const terminal = ["completed", "failed", "cancelled"].includes(nextJob.status);
+        if (terminal && nextJob.jobId && notifiedSceneJobRef.current !== nextJob.jobId) {
+          notifiedSceneJobRef.current = nextJob.jobId;
+          const latest = await jsonRequest<ProjectResponse>(
+            `/api/creative-studio-pro/projects/${projectId}`,
+            { cache: "no-store" },
+          );
+          if (disposed) return;
+          setProjectScenes(Array.isArray(latest.scenes) ? latest.scenes : []);
+          setProjectDetail(latest.project || null);
+          if (nextJob.status === "completed") {
+            markStep("scenes", "done", "백그라운드 명장 검수 완료");
+            setMessage(nextJob.message);
+            setActiveStep("voice");
+          } else {
+            markStep("scenes", "error", nextJob.message);
+            setError(nextJob.lastError || nextJob.message);
+          }
+          if (notificationPermission === "granted" && typeof Notification !== "undefined") {
+            new Notification(
+              nextJob.status === "completed" ? "GY-NEXUS 장면 제작 완료" : "GY-NEXUS 장면 확인 필요",
+              { body: nextJob.message },
+            );
+          }
+        }
+      } catch {
+        // Polling errors are temporary; the durable server job continues independently.
+      } finally {
+        polling = false;
+      }
+    };
+
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 3500);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [projectId, notificationPermission]);
 
   function markStep(key: StepKey, state: StepState, detail = "") {
     setSteps((current) => current.map((step) => step.key === key ? { ...step, state, detail } : step));
@@ -1434,6 +1524,20 @@ export default function ShortsProductionHub() {
     setActiveStep("voice");
   }
 
+  async function enqueueBackgroundScenes(id: string) {
+    const data = await jsonRequest<{ jobId?: string; job?: Omit<BackgroundSceneJob, "jobId"> }>(
+      `/api/creative-studio-pro/projects/${id}/scene-job`,
+      { method: "POST" },
+    );
+    if (!data.job) throw new Error("서버 장면 작업을 시작하지 못했습니다.");
+    const nextJob = { ...data.job, jobId: String(data.jobId || "") };
+    notifiedSceneJobRef.current = "";
+    setBackgroundSceneJob(nextJob);
+    markStep("scenes", "running", "서버 백그라운드 제작 중");
+    setMessage("Dream Y가 서버에서 장면을 계속 제작합니다. 이제 화면을 닫아도 안전합니다.");
+    return nextJob;
+  }
+
   async function prepareScenes() {
     if (!projectId || busy) {
       if (!projectId) setError("먼저 영상 프로젝트를 만들어주세요.");
@@ -1442,7 +1546,7 @@ export default function ShortsProductionHub() {
     setBusy("scenes");
     setError("");
     try {
-      await prepareScenesCore(projectId, Math.max(1, projectScenes.length || Math.ceil(duration / 5)));
+      await enqueueBackgroundScenes(projectId);
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : "장면 준비 실패";
       setError(reason);
@@ -1728,6 +1832,42 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
     } finally {
       setBusy("");
     }
+  }
+
+  async function updateBackgroundSceneJob(action: "retry" | "cancel" | "read") {
+    if (!projectId || busy) return;
+    setBusy(`scene-${action}`);
+    setError("");
+    try {
+      await jsonRequest(`/api/creative-studio-pro/projects/${projectId}/scene-job`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (action === "retry") {
+        notifiedSceneJobRef.current = "";
+        markStep("scenes", "running", "자동 복구 다시 시작");
+        setMessage("실패한 장면부터 서버에서 다시 제작합니다.");
+      } else if (action === "cancel") {
+        setMessage("백그라운드 장면 제작을 취소했습니다.");
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "장면 작업 변경에 실패했습니다.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function enableCompletionNotifications() {
+    if (typeof Notification === "undefined") {
+      setError("이 브라우저는 완료 알림을 지원하지 않습니다.");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    setMessage(permission === "granted"
+      ? "완료 알림을 켰습니다. 다른 화면에 있어도 알려드립니다."
+      : "브라우저 알림이 꺼져 있어 사이트 안에서 완료 상태를 표시합니다.");
   }
 
   async function downloadCapCutPackage() {
@@ -2020,8 +2160,48 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
               </div>
             )) : <p className={styles.helper}>프로젝트를 만든 뒤 AI 장면 준비를 실행하세요.</p>}
           </div>
-          <button className={styles.primary} type="button" onClick={() => void prepareScenes()} disabled={Boolean(busy) || !projectId}>
-            {busy === "scenes" ? "장면 제작·검수 중..." : "전체 장면 제작·85점 검수"}
+          {backgroundSceneJob && (
+            <div className={`${styles.backgroundJob} ${styles[backgroundSceneJob.status] || ""}`}>
+              <div className={styles.backgroundJobTop}>
+                <div>
+                  <b>
+                    {backgroundSceneJob.status === "completed" ? "명장 제작 완료"
+                      : backgroundSceneJob.status === "failed" ? "자동 복구 확인 필요"
+                        : backgroundSceneJob.status === "cancelled" ? "제작 취소됨"
+                          : "서버 백그라운드 제작 중"}
+                  </b>
+                  <span>{backgroundSceneJob.approvedScenes}/{backgroundSceneJob.totalScenes || projectScenes.length || 0}개 장면</span>
+                </div>
+                <strong>{backgroundSceneJob.progress}%</strong>
+              </div>
+              <div className={styles.backgroundProgress} aria-label={`장면 제작 ${backgroundSceneJob.progress}%`}>
+                <i style={{ width: `${backgroundSceneJob.progress}%` }} />
+              </div>
+              <p>{backgroundSceneJob.message}</p>
+              {backgroundSceneJob.attempts > 0 && backgroundSceneJob.status !== "completed" && (
+                <small>자동 복구 {backgroundSceneJob.attempts}/{backgroundSceneJob.maxAttempts}회</small>
+              )}
+              <div className={styles.backgroundActions}>
+                {notificationPermission !== "granted" && (
+                  <button type="button" className={styles.subtle} onClick={() => void enableCompletionNotifications()}>
+                    완료 알림 켜기
+                  </button>
+                )}
+                {["queued", "processing", "retry"].includes(backgroundSceneJob.status) && (
+                  <button type="button" className={styles.subtle} onClick={() => void updateBackgroundSceneJob("cancel")} disabled={Boolean(busy)}>
+                    제작 취소
+                  </button>
+                )}
+                {backgroundSceneJob.status === "failed" && (
+                  <button type="button" className={styles.subtle} onClick={() => void updateBackgroundSceneJob("retry")} disabled={Boolean(busy)}>
+                    실패 지점부터 다시 시작
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          <button className={styles.primary} type="button" onClick={() => void prepareScenes()} disabled={Boolean(busy) || !projectId || Boolean(backgroundSceneJob && ["queued", "processing", "retry"].includes(backgroundSceneJob.status))}>
+            {busy === "scenes" ? "서버 대기열 등록 중..." : "백그라운드 Dream Y 명장 제작 시작"}
           </button>
         </section>
       );
