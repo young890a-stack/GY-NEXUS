@@ -345,13 +345,19 @@ function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-export default function ShortsProductionHub() {
-  const [mode, setMode] = useState<Mode>("guided");
+export default function ShortsProductionHub({
+  initialMode = "guided",
+  initialAffiliateUrl = "",
+}: {
+  initialMode?: Mode;
+  initialAffiliateUrl?: string;
+}) {
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [sourceStrategy, setSourceStrategy] = useState<SourceStrategy>("korean-original");
   const [activeStep, setActiveStep] = useState<StepKey>("product");
   const [steps, setSteps] = useState<CanvasStep[]>(initialSteps);
 
-  const [affiliateUrl, setAffiliateUrl] = useState("");
+  const [affiliateUrl, setAffiliateUrl] = useState(initialAffiliateUrl);
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
   const [productImageUrl, setProductImageUrl] = useState("");
