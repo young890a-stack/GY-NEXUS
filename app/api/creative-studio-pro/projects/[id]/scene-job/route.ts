@@ -182,6 +182,17 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       const iteration = Math.max(0, Number(result.iteration) || 0) + 1;
       const config = objectValue(job.config);
       const sceneGenerationMode = sceneMode(config.sceneGenerationMode);
+      const { error: resetError } = await supabase
+        .from("video_scenes")
+        .update({
+          quality_status: "revision_required",
+          image_retry_count: 0,
+          error_message: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("project_id", id)
+        .eq("quality_status", "hold");
+      if (resetError) throw resetError;
       const nextResult = {
         ...result,
         iteration,

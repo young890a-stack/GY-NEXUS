@@ -1356,7 +1356,7 @@ export default function ShortsProductionHub({
         },
         platformTargets: ["youtube", "instagram"],
         qualityThreshold: sceneGenerationMode === "fast" ? 82 : sceneGenerationMode === "quality" ? 88 : 85,
-        maxImageRetries: sceneGenerationMode === "fast" ? 1 : 2,
+        maxImageRetries: sceneGenerationMode === "fast" ? 1 : sceneGenerationMode === "quality" ? 3 : 2,
         playbackSpeed,
         sceneGenerationMode,
       }),

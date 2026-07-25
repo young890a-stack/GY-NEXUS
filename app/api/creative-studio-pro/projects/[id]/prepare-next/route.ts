@@ -28,6 +28,12 @@ function objectValue(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function stringList(value: unknown, limit = 8) {
+  return Array.isArray(value)
+    ? value.map(String).map((item) => item.trim()).filter(Boolean).slice(0, limit)
+    : [];
+}
+
 function isProductVisualProfile(value: unknown): value is ProductVisualProfile {
   const item = objectValue(value);
   return typeof item.identitySummary === "string" &&
@@ -109,7 +115,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const threshold = Math.max(modeThreshold, Math.min(95, Number(project.quality_threshold) || modeThreshold));
     const maxRetries = sceneGenerationMode === "fast"
       ? 1
-      : Math.max(1, Math.min(2, Number(project.max_image_retries) || 2));
+      : sceneGenerationMode === "quality"
+        ? Math.max(3, Math.min(4, Number(project.max_image_retries) || 3))
+        : Math.max(2, Math.min(3, Number(project.max_image_retries) || 2));
     if (requestedMode && requestedMode !== storedMode) {
       await supabase.from("video_projects").update({
         settings,
@@ -119,7 +127,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       }).eq("id", id);
     }
     const storedAttempts = Math.max(0, Number(scene.image_retry_count) || 0);
-    const attempt = scene.quality_status === "finalizing" ? Math.max(1, storedAttempts) : storedAttempts + 1;
+    const attempt = storedAttempts + 1;
+    const previousQualityReport = objectValue(scene.quality_report);
+    const previousIssues = stringList(previousQualityReport.issues);
 
     let visualProfile = settings.visualProfile;
     if (!isProductVisualProfile(visualProfile)) {
@@ -177,7 +187,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         : "첫 장면에서 확정한 상품과 광고의 시각 기준을 이후 장면에서도 유지할 수 있게 명확하게 표현한다.",
       "Runway에서 제품이 녹거나 변형되지 않도록 한 번에 하나의 단순한 동작과 안정된 제품 경계를 만든다.",
       "세로 화면 위아래 12%에는 중요한 상품 요소를 두지 않는다.",
-    ].join(" ");
+      previousIssues.length
+        ? `이전 검수에서 발견된 문제를 이번 생성에서 반드시 교정한다: ${previousIssues.join(" · ")}`
+        : "",
+    ].filter(Boolean).join(" ");
     if (scene.quality_status === "finalizing" && typeof scene.selected_image_url === "string") {
       await supabase.from("video_scenes").update({
         quality_status: "finalizing",
@@ -204,16 +217,37 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         maxReviewAttempts: 1,
       });
       const approved = finalReview.report.approved;
-      const hold = !approved && attempt >= maxRetries;
+      const draftScore = Math.max(0, Number(previousQualityReport.score) || 0);
+      const rescueWithVerifiedDraft = !approved
+        && attempt >= maxRetries
+        && draftScore >= threshold
+        && typeof scene.selected_image_url === "string";
+      const selectedImageUrl = approved
+        ? finalImage.image.assetUrl
+        : rescueWithVerifiedDraft
+          ? scene.selected_image_url
+          : scene.selected_image_url;
+      const hold = !approved && !rescueWithVerifiedDraft && attempt >= maxRetries;
+      const nextQualityStatus = approved || rescueWithVerifiedDraft
+        ? "approved"
+        : hold
+          ? "hold"
+          : "finalizing";
       await supabase.from("video_scenes").update({
-        selected_image_url: approved ? finalImage.image.assetUrl : null,
-        selected_image_model: finalImage.model,
-        quality_status: approved ? "approved" : hold ? "hold" : "revision_required",
-        quality_score: finalReview.report.score,
-        quality_report: { ...finalReview.report, draft: objectValue(scene.quality_report) },
+        selected_image_url: selectedImageUrl,
+        selected_image_model: approved ? finalImage.model : scene.selected_image_model,
+        quality_status: nextQualityStatus,
+        quality_score: approved ? finalReview.report.score : rescueWithVerifiedDraft ? draftScore : finalReview.report.score,
+        quality_report: {
+          ...finalReview.report,
+          draft: previousQualityReport,
+          rescueMode: rescueWithVerifiedDraft ? "verified_draft_preserved" : null,
+        },
         image_retry_count: attempt,
-        quality_approved_at: approved ? new Date().toISOString() : null,
-        error_message: approved ? null : finalReview.report.issues.join(" · ") || "최종 이미지 검수 기준 미달",
+        quality_approved_at: approved || rescueWithVerifiedDraft ? new Date().toISOString() : null,
+        error_message: approved || rescueWithVerifiedDraft
+          ? null
+          : finalReview.report.issues.join(" · ") || "최종 이미지 검수 기준 미달",
         updated_at: new Date().toISOString(),
       }).eq("id", scene.id);
       const { count: remaining } = await supabase
@@ -227,15 +261,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({
         success: true,
         done: (remaining || 0) === 0,
-        approved,
+        approved: approved || rescueWithVerifiedDraft,
         hold,
-        qualityStatus: approved ? "approved" : hold ? "hold" : "revision_required",
+        qualityStatus: nextQualityStatus,
         sceneNumber: scene.scene_number,
-        imageUrl: approved ? finalImage.image.assetUrl : null,
+        imageUrl: selectedImageUrl,
         report: finalReview.report,
         message: approved
           ? `장면 ${scene.scene_number}의 최고품질 마감과 검수가 완료됐습니다.`
-          : `장면 ${scene.scene_number}의 최고품질 마감을 다시 준비합니다.`,
+          : rescueWithVerifiedDraft
+            ? `장면 ${scene.scene_number}은 상품 일치 검증을 통과한 초안을 보존해 안전하게 승인했습니다.`
+            : hold
+              ? `장면 ${scene.scene_number}의 실제 상품 사진을 보완해야 합니다.`
+              : `장면 ${scene.scene_number}의 검수 사유를 반영해 최고품질 마감을 자동 교정합니다.`,
       });
     }
 
