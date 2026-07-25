@@ -1533,7 +1533,11 @@ export default function ShortsProductionHub({
   async function enqueueBackgroundScenes(id: string) {
     const data = await jsonRequest<{ jobId?: string; job?: Omit<BackgroundSceneJob, "jobId"> }>(
       `/api/creative-studio-pro/projects/${id}/scene-job`,
-      { method: "POST" },
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sceneGenerationMode }),
+      },
     );
     if (!data.job) throw new Error("서버 장면 작업을 시작하지 못했습니다.");
     const nextJob = { ...data.job, jobId: String(data.jobId || "") };

@@ -35,12 +35,18 @@ async function updateJob(jobId: string, values: Record<string, unknown>) {
   if (error) throw error;
 }
 
-async function runScene(projectId: string, sceneId: string) {
+type SceneGenerationMode = "fast" | "balanced" | "quality";
+
+function sceneMode(value: unknown): SceneGenerationMode {
+  return value === "fast" || value === "balanced" ? value : "quality";
+}
+
+async function runScene(projectId: string, sceneId: string, sceneGenerationMode: SceneGenerationMode) {
   const response = await prepareNextScene(
     new Request("https://queue.internal/prepare-next", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sceneId, sceneGenerationMode: "quality" }),
+      body: JSON.stringify({ sceneId, sceneGenerationMode }),
     }),
     { params: Promise.resolve({ id: projectId }) },
   );
@@ -63,6 +69,8 @@ export const POST = handleCallback<SceneQueueMessage>(async (message) => {
   if (!job || ["completed", "failed", "cancelled"].includes(String(job.status))) return;
 
   const previousResult = objectValue(job.result_data);
+  const jobConfig = objectValue(job.config);
+  const sceneGenerationMode = sceneMode(message.sceneGenerationMode || jobConfig.sceneGenerationMode);
   const iteration = Math.max(Number(message.iteration) || 0, Number(previousResult.iteration) || 0);
   await updateJob(jobId, {
     status: "processing",
@@ -133,9 +141,10 @@ export const POST = handleCallback<SceneQueueMessage>(async (message) => {
     const settings = objectValue(project.settings);
     const visualProfile = objectValue(settings.visualProfile);
     const profileReady = typeof visualProfile.identitySummary === "string";
+    const parallelDrafts = sceneGenerationMode === "fast" ? 4 : sceneGenerationMode === "balanced" ? 3 : 2;
     const targets = finalizing.length
       ? finalizing.slice(0, 1)
-      : drafts.slice(0, profileReady ? 2 : 1);
+      : drafts.slice(0, profileReady ? parallelDrafts : 1);
     if (!targets.length) throw new Error("다음 장면을 선택하지 못했습니다.");
 
     await updateJob(jobId, {
@@ -151,7 +160,7 @@ export const POST = handleCallback<SceneQueueMessage>(async (message) => {
       },
     });
 
-    await Promise.all(targets.map((scene) => runScene(projectId, scene.id)));
+    await Promise.all(targets.map((scene) => runScene(projectId, scene.id, sceneGenerationMode)));
 
     const { data: latestScenes, error: latestError } = await supabase
       .from("video_scenes")
@@ -217,11 +226,11 @@ export const POST = handleCallback<SceneQueueMessage>(async (message) => {
     });
     await send<SceneQueueMessage>(
       SCENE_QUEUE_TOPIC,
-      { jobId, projectId, iteration: nextIteration },
+      { jobId, projectId, iteration: nextIteration, sceneGenerationMode },
       {
         idempotencyKey: `${jobId}:step:${nextIteration}`,
         retentionSeconds: 604800,
-        delaySeconds: 2,
+        delaySeconds: sceneGenerationMode === "fast" ? 0 : sceneGenerationMode === "balanced" ? 1 : 2,
       },
     );
   } catch (error) {

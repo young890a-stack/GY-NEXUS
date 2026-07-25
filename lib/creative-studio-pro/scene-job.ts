@@ -28,6 +28,7 @@ export type SceneQueueMessage = {
   jobId: string;
   projectId: string;
   iteration: number;
+  sceneGenerationMode?: "fast" | "balanced" | "quality";
 };
 
 export function objectValue(value: unknown): Record<string, unknown> {

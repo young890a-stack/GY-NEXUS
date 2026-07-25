@@ -24,10 +24,16 @@ async function latestProjectJob(projectId: string) {
   return data as Record<string, unknown> | null;
 }
 
-async function enqueue(jobId: string, projectId: string, iteration: number) {
+type SceneGenerationMode = "fast" | "balanced" | "quality";
+
+function sceneMode(value: unknown): SceneGenerationMode {
+  return value === "fast" || value === "balanced" ? value : "quality";
+}
+
+async function enqueue(jobId: string, projectId: string, iteration: number, sceneGenerationMode: SceneGenerationMode) {
   return send<SceneQueueMessage>(
     SCENE_QUEUE_TOPIC,
-    { jobId, projectId, iteration },
+    { jobId, projectId, iteration, sceneGenerationMode },
     {
       idempotencyKey: `${jobId}:step:${iteration}`,
       retentionSeconds: 604800,
@@ -52,10 +58,12 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   }
 }
 
-export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const supabase = createAdminClient();
   try {
+    const body = objectValue(await request.json().catch(() => ({})));
+    const sceneGenerationMode = sceneMode(body.sceneGenerationMode);
     const existing = await latestProjectJob(id);
     if (existing && ["queued", "processing", "retry"].includes(String(existing.status))) {
       return NextResponse.json({
@@ -83,7 +91,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
         config: {
           kind: SCENE_JOB_KIND,
           projectId: id,
-          sceneGenerationMode: "quality",
+          sceneGenerationMode,
         },
         result_data: initialResult,
         attempts: 0,
@@ -95,7 +103,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     if (error || !job) throw error || new Error("장면 작업을 저장하지 못했습니다.");
 
     try {
-      const queued = await enqueue(String(job.id), id, 0);
+      const queued = await enqueue(String(job.id), id, 0, sceneGenerationMode);
       const resultData = {
         ...initialResult,
         queueMessageId: String(queued.messageId || ""),
@@ -172,6 +180,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
     if (action === "retry") {
       const iteration = Math.max(0, Number(result.iteration) || 0) + 1;
+      const config = objectValue(job.config);
+      const sceneGenerationMode = sceneMode(config.sceneGenerationMode);
       const nextResult = {
         ...result,
         iteration,
@@ -189,7 +199,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         updated_at: new Date().toISOString(),
       }).eq("id", job.id);
       if (error) throw error;
-      await enqueue(String(job.id), id, iteration);
+      await enqueue(String(job.id), id, iteration, sceneGenerationMode);
       return NextResponse.json({ success: true });
     }
 
