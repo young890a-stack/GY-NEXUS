@@ -320,8 +320,8 @@ alter table public.creative_jobs enable row level security;
 drop policy if exists "authenticated can manage creative jobs" on public.creative_jobs;
 create policy "authenticated can manage creative jobs" on public.creative_jobs for all to authenticated using (true) with check (true);
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('creative-assets','creative-assets',true,104857600,array['image/png','image/jpeg','image/webp','video/mp4'])
-on conflict (id) do update set public=true, file_size_limit=104857600;
+values ('creative-assets','creative-assets',true,104857600,array['image/png','image/jpeg','image/webp','video/mp4','video/webm','video/quicktime','audio/mpeg','audio/mp3','audio/wav','audio/x-wav','audio/mp4','audio/x-m4a'])
+on conflict (id) do update set public=true, file_size_limit=104857600, allowed_mime_types=excluded.allowed_mime_types;
 drop policy if exists "public can view creative assets" on storage.objects;
 create policy "public can view creative assets" on storage.objects for select using (bucket_id='creative-assets');
 

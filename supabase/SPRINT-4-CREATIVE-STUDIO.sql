@@ -34,7 +34,7 @@ values (
   'creative-assets',
   true,
   104857600,
-  array['image/png','image/jpeg','image/webp','video/mp4']
+  array['image/png','image/jpeg','image/webp','video/mp4','video/webm','video/quicktime','audio/mpeg','audio/mp3','audio/wav','audio/x-wav','audio/mp4','audio/x-m4a']
 )
 on conflict (id) do update set
   public = excluded.public,

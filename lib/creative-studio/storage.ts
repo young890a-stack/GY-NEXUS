@@ -1,6 +1,20 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const BUCKET = process.env.CREATIVE_STORAGE_BUCKET || "creative-assets";
+const SUPPORTED_CREATIVE_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/mp4",
+  "audio/x-m4a",
+];
 
 /**
  * Supabase Storage object keys are kept ASCII-only to prevent Invalid key errors
@@ -39,13 +53,32 @@ export async function uploadBuffer(params: {
   contentType: string;
 }) {
   const supabase = createAdminClient();
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(params.path, params.buffer, {
-      contentType: params.contentType,
-      cacheControl: "31536000",
-      upsert: true,
-    });
+  const upload = () => supabase.storage.from(BUCKET).upload(params.path, params.buffer, {
+    contentType: params.contentType,
+    cacheControl: "31536000",
+    upsert: true,
+  });
+  let { error } = await upload();
+
+  if (error && /mime type.+not supported/i.test(error.message)) {
+    const { data: bucket, error: bucketError } = await supabase.storage.getBucket(BUCKET);
+    if (!bucketError && bucket) {
+      const currentMimeTypes = Array.isArray(bucket.allowed_mime_types)
+        ? bucket.allowed_mime_types
+        : [];
+      const allowedMimeTypes = Array.from(new Set([
+        ...currentMimeTypes,
+        ...SUPPORTED_CREATIVE_MIME_TYPES,
+        params.contentType,
+      ]));
+      const { error: updateError } = await supabase.storage.updateBucket(BUCKET, {
+        public: bucket.public,
+        fileSizeLimit: bucket.file_size_limit || 104857600,
+        allowedMimeTypes,
+      });
+      if (!updateError) ({ error } = await upload());
+    }
+  }
 
   if (error) throw error;
 
