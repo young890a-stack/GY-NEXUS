@@ -48,10 +48,15 @@ export async function withStructuredJsonRetry<T>({
       }
       return parsed;
     } catch (error) {
+      const providerFailure = classifyOpenAIError(error);
+      if (providerFailure && !providerFailure.retryable) throw providerFailure.userError;
       lastError = error;
     }
   }
 
+  const providerFailure = openAIUserError(lastError);
+  if (providerFailure) throw providerFailure;
   const detail = lastError instanceof Error ? lastError.message : "알 수 없는 응답 오류";
   throw new Error(`드림 와이가 ${label} 결과를 자동 복구하지 못했습니다. 잠시 후 다시 눌러 주세요. (${detail})`);
 }
+import { classifyOpenAIError, openAIUserError } from "@/lib/ai/openai-error";

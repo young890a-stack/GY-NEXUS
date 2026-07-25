@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { openAIErrorStatus } from "@/lib/ai/openai-error";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateCommercePackage } from "@/lib/creative-studio-pro/commerce";
 import { gyProductCode, type TrendIntelligence } from "@/lib/creative-studio-pro/integration";
@@ -65,6 +66,6 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
     return NextResponse.json({
       success: false,
       message: error instanceof Error ? error.message : "쇼핑 콘텐츠 패키지 생성에 실패했습니다.",
-    }, { status: 500 });
+    }, { status: openAIErrorStatus(error) });
   }
 }

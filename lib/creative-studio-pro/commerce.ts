@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { classifyOpenAIError, openAIUserError } from "@/lib/ai/openai-error";
 import type { TrendIntelligence } from "@/lib/creative-studio-pro/integration";
 
 export type CommerceThumbnailOption = {
@@ -381,10 +382,14 @@ export async function generateCommercePackage(input: {
       if (!raw) throw new Error("쇼핑 콘텐츠 패키지 결과가 비어 있습니다.");
       parsed = parseStructuredJson<CommercePackage>(raw, "쇼핑 콘텐츠 패키지");
     } catch (error) {
+      const providerFailure = classifyOpenAIError(error);
+      if (providerFailure && !providerFailure.retryable) throw providerFailure.userError;
       packageFailure = error;
     }
   }
   if (!parsed) {
+    const providerFailure = openAIUserError(packageFailure);
+    if (providerFailure) throw providerFailure;
     throw new Error(packageFailure instanceof Error
       ? `Dream Y가 잘린 AI 응답을 자동 재시도했지만 복구하지 못했습니다: ${packageFailure.message}`
       : "Dream Y가 쇼핑 콘텐츠 패키지를 자동 복구하지 못했습니다.");
@@ -495,10 +500,14 @@ export async function generateCommercePackage(input: {
       if (!auditRaw) throw new Error("쇼핑 콘텐츠 독립 품질검수 결과가 비어 있습니다.");
       audit = parseStructuredJson<CommerceQualityAudit>(auditRaw, "독립 품질검수");
     } catch (error) {
+      const providerFailure = classifyOpenAIError(error);
+      if (providerFailure && !providerFailure.retryable) throw providerFailure.userError;
       auditFailure = error;
     }
   }
   if (!audit) {
+    const providerFailure = openAIUserError(auditFailure);
+    if (providerFailure) throw providerFailure;
     throw new Error(auditFailure instanceof Error
       ? `Dream Y가 품질검수 응답을 자동 재시도했지만 복구하지 못했습니다: ${auditFailure.message}`
       : "Dream Y가 품질검수 응답을 자동 복구하지 못했습니다.");

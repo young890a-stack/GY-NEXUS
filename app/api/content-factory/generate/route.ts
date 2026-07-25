@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { openAIErrorStatus } from "@/lib/ai/openai-error";
 import { generateContentFactoryPackage } from "@/lib/content-factory/generate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { FactoryInput } from "@/lib/content-factory/types";
@@ -56,6 +57,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, result, saved, runId, message: saved ? "콘텐츠 패키지 생성과 저장이 완료되었습니다." : "콘텐츠 패키지는 생성되었지만 DB 저장은 건너뛰었습니다. schema.sql 실행 여부를 확인해주세요." });
   } catch (error) {
     console.error("CONTENT FACTORY ERROR", error);
-    return NextResponse.json({ success: false, message: error instanceof Error ? error.message : "콘텐츠 공장 실행에 실패했습니다." }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: error instanceof Error ? error.message : "콘텐츠 공장 실행에 실패했습니다." },
+      { status: openAIErrorStatus(error) },
+    );
   }
 }

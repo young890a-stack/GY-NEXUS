@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { classifyOpenAIError, openAIUserError } from "@/lib/ai/openai-error";
 import { buildContentFactoryPrompt } from "@/lib/content-factory/prompt";
 import type { ContentFactoryPackage, FactoryInput } from "@/lib/content-factory/types";
 
@@ -25,10 +26,14 @@ export async function generateContentFactoryPackage(input: FactoryInput): Promis
       if (!raw) throw new Error("AI가 콘텐츠 패키지를 생성하지 못했습니다.");
       return JSON.parse(extractJson(raw)) as ContentFactoryPackage;
     } catch (error) {
+      const providerFailure = classifyOpenAIError(error);
+      if (providerFailure && !providerFailure.retryable) throw providerFailure.userError;
       lastFailure = error;
       console.warn("CONTENT FACTORY AUTO RETRY", { attempt: attempt + 1, message: error instanceof Error ? error.message : String(error) });
     }
   }
+  const providerFailure = openAIUserError(lastFailure);
+  if (providerFailure) throw providerFailure;
   throw new Error(lastFailure instanceof Error
     ? `Dream Y가 잘린 콘텐츠 응답을 자동 재시도했지만 복구하지 못했습니다: ${lastFailure.message}`
     : "Dream Y가 콘텐츠 구조를 자동 복구하지 못했습니다.");
