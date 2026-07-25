@@ -79,12 +79,22 @@ function firstCredentialPair(candidates: Array<[string, string, string]>): Crede
 export function getGoogleCredentials(provider: "youtube" | "blogger" | "search-console") {
   if (provider === "youtube") {
     return firstCredentialPair([
+      [
+        "SEARCH_CONSOLE_CLIENT_ID",
+        "SEARCH_CONSOLE_CLIENT_SECRET",
+        "Search Console shared",
+      ],
       ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YouTube 전용"],
       ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "Google 공통"],
     ]);
   }
   if (provider === "blogger") {
     return firstCredentialPair([
+      [
+        "SEARCH_CONSOLE_CLIENT_ID",
+        "SEARCH_CONSOLE_CLIENT_SECRET",
+        "Search Console shared",
+      ],
       ["BLOGGER_CLIENT_ID", "BLOGGER_CLIENT_SECRET", "Blogger 전용"],
       ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "Google 공통"],
       ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YouTube 전용 공유"],
