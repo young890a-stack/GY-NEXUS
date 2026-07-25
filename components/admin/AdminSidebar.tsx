@@ -36,6 +36,8 @@ const navigationGroups: Group[] = [
   ]},
   { ko: "연결 및 설정", en: "SYSTEM", items: [
     { icon: "link", ko: "통합 연결센터", en: "Connection Center", href: "/admin/connections" },
+    { icon: "users", ko: "회원·직원 권한", en: "Members & Staff", href: "/admin/staff" },
+    { icon: "image", ko: "사진·영상 보관", en: "Media Retention", href: "/admin/media-library" },
     { icon: "shield", ko: "운영 상태", en: "System Status", href: "/admin/system-status" },
     { icon: "settings", ko: "설정", en: "Settings", href: "/admin/settings" },
   ]},
