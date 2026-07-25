@@ -36,13 +36,15 @@ function isProductVisualProfile(value: unknown): value is ProductVisualProfile {
     Number.isFinite(Number(item.referenceCoverageScore));
 }
 
-export async function POST(_: Request, context: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const supabase = createAdminClient();
   let sceneId = "";
   let sceneRecoveryStatus: "failed" | "finalizing" = "failed";
 
   try {
+    const body = objectValue(await request.json().catch(() => ({})));
+    const requestedSceneId = String(body.sceneId || "").trim();
     const { data: project, error: projectError } = await supabase
       .from("video_projects")
       .select("*")
@@ -50,11 +52,13 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
       .single();
     if (projectError || !project) throw projectError || new Error("프로젝트를 찾을 수 없습니다.");
 
-    const { data: scene, error: sceneError } = await supabase
+    let sceneQuery = supabase
       .from("video_scenes")
       .select("*")
       .eq("project_id", id)
-      .in("quality_status", ["pending", "revision_required", "failed", "generating", "reviewing", "finalizing"])
+      .in("quality_status", ["pending", "revision_required", "failed", "generating", "reviewing", "finalizing"]);
+    if (requestedSceneId) sceneQuery = sceneQuery.eq("id", requestedSceneId);
+    const { data: scene, error: sceneError } = await sceneQuery
       .order("scene_number")
       .limit(1)
       .maybeSingle();
@@ -79,22 +83,41 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
     sceneId = scene.id;
     if (scene.quality_status === "finalizing") sceneRecoveryStatus = "finalizing";
     const references = referenceUrls(project as Record<string, unknown>);
-    const settings = objectValue(project.settings);
-    const singlePhoto = settings.sourceMode === "single-photo-commerce";
-    const sceneGenerationMode = settings.sceneGenerationMode === "fast"
+    const storedSettings = objectValue(project.settings);
+    const requestedModeValue = String(body.sceneGenerationMode || "");
+    const requestedMode = requestedModeValue === "fast"
       ? "fast"
-      : settings.sceneGenerationMode === "quality"
+      : requestedModeValue === "balanced"
+        ? "balanced"
+        : requestedModeValue === "quality"
+          ? "quality"
+          : "";
+    const storedMode = storedSettings.sceneGenerationMode === "fast"
+      ? "fast"
+      : storedSettings.sceneGenerationMode === "quality"
         ? "quality"
         : "balanced";
+    const sceneGenerationMode = requestedMode || storedMode;
+    const settings: Record<string, unknown> = { ...storedSettings, sceneGenerationMode };
+    const singlePhoto = settings.sourceMode === "single-photo-commerce";
     const candidateCount = sceneGenerationMode === "fast" ? 1 : sceneGenerationMode === "balanced" ? 2 : 3;
     const minimumReferences = singlePhoto ? 1 : 2;
     if (references.length < minimumReferences) throw new Error(singlePhoto
       ? "사진 한 장 쇼츠를 만들려면 실제 상품 이미지 1장을 올려주세요."
       : "유료 품질 기준을 위해 앞·뒤 또는 서로 다른 각도의 실제 상품 사진을 최소 2장 올려주세요.");
-    const threshold = Math.max(80, Math.min(95, Number(project.quality_threshold) || 85));
+    const modeThreshold = sceneGenerationMode === "fast" ? 82 : sceneGenerationMode === "quality" ? 88 : 85;
+    const threshold = Math.max(modeThreshold, Math.min(95, Number(project.quality_threshold) || modeThreshold));
     const maxRetries = sceneGenerationMode === "fast"
       ? 1
       : Math.max(1, Math.min(2, Number(project.max_image_retries) || 2));
+    if (requestedMode && requestedMode !== storedMode) {
+      await supabase.from("video_projects").update({
+        settings,
+        quality_threshold: threshold,
+        max_image_retries: maxRetries,
+        updated_at: new Date().toISOString(),
+      }).eq("id", id);
+    }
     const storedAttempts = Math.max(0, Number(scene.image_retry_count) || 0);
     const attempt = scene.quality_status === "finalizing" ? Math.max(1, storedAttempts) : storedAttempts + 1;
 
@@ -206,6 +229,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
         done: (remaining || 0) === 0,
         approved,
         hold,
+        qualityStatus: approved ? "approved" : hold ? "hold" : "revision_required",
         sceneNumber: scene.scene_number,
         imageUrl: approved ? finalImage.image.assetUrl : null,
         report: finalReview.report,
@@ -257,6 +281,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
         done: false,
         approved: false,
         hold,
+        qualityStatus: hold ? "hold" : "revision_required",
         sceneNumber: scene.scene_number,
         report: draftReview.report,
         message: hold
@@ -281,6 +306,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
         success: true,
         done: false,
         approved: false,
+        qualityStatus: "finalizing",
         sceneNumber: scene.scene_number,
         report: draftReview.report,
         message: `장면 ${scene.scene_number} 초안이 통과되어 최고품질 마감을 별도 요청으로 진행합니다.`,
@@ -314,6 +340,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
       done: (remaining || 0) === 0,
       approved: true,
       hold: false,
+      qualityStatus: "approved",
       sceneNumber: scene.scene_number,
       imageUrl: draftReview.best.assetUrl,
       report: draftReview.report,

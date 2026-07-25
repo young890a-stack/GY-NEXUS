@@ -346,7 +346,7 @@ export default function ShortsProductionHub() {
 
   const [duration, setDuration] = useState<15 | 20 | 25 | 30>(20);
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.2 | 1.4>(1);
-  const [sceneGenerationMode, setSceneGenerationMode] = useState<SceneGenerationMode>("balanced");
+  const [sceneGenerationMode, setSceneGenerationMode] = useState<SceneGenerationMode>("quality");
   const [tone, setTone] = useState("친근하고 재미있는 생활 밀착형");
   const [style, setStyle] = useState<"problem-solution" | "ugc-review" | "how-to" | "cinematic-product">("problem-solution");
   const [voicePreset, setVoicePreset] = useState<VoicePreset>("marin");
@@ -1313,27 +1313,111 @@ export default function ShortsProductionHub() {
       return;
     }
     markStep("scenes", "running");
-    let transientFailures = 0;
-    const maxSteps = sceneCount * (sceneGenerationMode === "quality" ? 5 : 3) + 6;
-    for (let index = 0; index < maxSteps; index += 1) {
-      try {
-        const result = await jsonRequest<{ done?: boolean; message?: string }>(
-          `/api/creative-studio-pro/projects/${id}/prepare-next`,
-          { method: "POST" },
-        );
-        transientFailures = 0;
+    type ScenePreparationResult = {
+      done?: boolean;
+      message?: string;
+      approved?: boolean;
+      hold?: boolean;
+      qualityStatus?: string;
+      sceneNumber?: number;
+    };
+    const requestScene = async (sceneId?: string) => {
+      let lastError: unknown = null;
+      for (let retry = 0; retry < 4; retry += 1) {
+        try {
+          return await jsonRequest<ScenePreparationResult>(
+            `/api/creative-studio-pro/projects/${id}/prepare-next`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...(sceneId ? { sceneId } : {}),
+                sceneGenerationMode,
+              }),
+            },
+          );
+        } catch (cause) {
+          lastError = cause;
+          const reason = cause instanceof Error ? cause.message : "장면 요청 실패";
+          const recoverable =
+            /504|502|503|timeout|시간|network|fetch|요청 실패|자동 복구|응답|JSON|잘렸|전송/i.test(
+              reason,
+            );
+          if (!recoverable || retry >= 3) throw cause;
+          setMessage(`작업 연결이 잠시 끊겨 Dream Y가 저장된 장면부터 자동 재개합니다. (${retry + 1}/3)`);
+          await sleep(900);
+        }
+      }
+      throw lastError;
+    };
+
+    if (sceneGenerationMode === "quality") {
+      const beforeDraft = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
+      const beforeScenes = Array.isArray(beforeDraft.scenes) ? beforeDraft.scenes : [];
+      const heldBeforeDraft = beforeScenes.find((scene) => scene.quality_status === "hold");
+      if (heldBeforeDraft) {
+        throw new Error(`장면 ${heldBeforeDraft.scene_number || ""}번이 상품 사실 검수에서 보류됐습니다.`);
+      }
+      const draftTargets = beforeScenes
+        .filter((scene) => scene.id && !["approved", "finalizing"].includes(String(scene.quality_status || "")))
+        .sort((left, right) => Number(left.scene_number || 0) - Number(right.scene_number || 0));
+      const prepareDraft = async (scene: ProjectScene) => {
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const result = await requestScene(scene.id);
+          setMessage(result.message || `장면 ${scene.scene_number || ""}의 명장 초안을 준비하고 있습니다.`);
+          if (result.qualityStatus === "finalizing" || result.qualityStatus === "approved") return;
+          if (result.hold || result.qualityStatus === "hold") {
+            throw new Error(`장면 ${result.sceneNumber || scene.scene_number || ""}번이 상품 사실 검수에서 보류됐습니다.`);
+          }
+        }
+        throw new Error(`장면 ${scene.scene_number || ""}번 초안 검수를 완료하지 못했습니다.`);
+      };
+
+      if (draftTargets.length) {
+        await prepareDraft(draftTargets[0]);
+        const remainingDrafts = draftTargets.slice(1);
+        let draftCursor = 0;
+        const draftWorker = async () => {
+          while (draftCursor < remainingDrafts.length) {
+            const scene = remainingDrafts[draftCursor];
+            draftCursor += 1;
+            await prepareDraft(scene);
+          }
+        };
+        await Promise.all(Array.from(
+          { length: Math.min(2, remainingDrafts.length) },
+          () => draftWorker(),
+        ));
+      }
+
+      const afterDraft = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
+      const finalTargets = (Array.isArray(afterDraft.scenes) ? afterDraft.scenes : [])
+        .filter((scene) => scene.id && scene.quality_status !== "approved")
+        .sort((left, right) => Number(left.scene_number || 0) - Number(right.scene_number || 0));
+      for (const scene of finalTargets) {
+        if (scene.quality_status === "hold") {
+          throw new Error(`장면 ${scene.scene_number || ""}번이 최고품질 검수에서 보류됐습니다.`);
+        }
+        let approved = false;
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const result = await requestScene(scene.id);
+          setMessage(result.message || `장면 ${scene.scene_number || ""}을 앞 장면과 이어지게 고해상도로 마감하고 있습니다.`);
+          if (result.approved || result.qualityStatus === "approved") {
+            approved = true;
+            break;
+          }
+          if (result.hold || result.qualityStatus === "hold") {
+            throw new Error(`장면 ${result.sceneNumber || scene.scene_number || ""}번이 최고품질 검수에서 보류됐습니다.`);
+          }
+        }
+        if (!approved) throw new Error(`장면 ${scene.scene_number || ""}번 최고품질 마감을 완료하지 못했습니다.`);
+      }
+    } else {
+      const maxSteps = sceneCount * 3 + 6;
+      for (let index = 0; index < maxSteps; index += 1) {
+        const result = await requestScene();
         setMessage(result.message || `AI 장면 ${Math.min(index + 1, sceneCount)}개를 준비하고 있습니다.`);
         if (result.done) break;
-      } catch (cause) {
-        const reason = cause instanceof Error ? cause.message : "장면 요청 실패";
-        const recoverable =
-          /504|502|503|timeout|시간|network|fetch|요청 실패|자동 복구|응답|JSON|잘렸|전송/i.test(
-            reason,
-          );
-        if (!recoverable || transientFailures >= 3) throw cause;
-        transientFailures += 1;
-        setMessage(`장면 작업이 길어져 Dream Y가 자동으로 이어서 처리합니다. (${transientFailures}/3)`);
-        await sleep(900);
       }
     }
 
@@ -1345,7 +1429,7 @@ export default function ShortsProductionHub() {
     if (incomplete.length) {
       throw new Error(`장면 ${incomplete.map((scene) => scene.scene_number).join(", ")}번이 아직 준비 중이거나 검수 보류 상태입니다. 다시 누르면 저장된 지점부터 이어집니다.`);
     }
-    markStep("scenes", "done", `${sceneGenerationMode === "fast" ? "빠른" : sceneGenerationMode === "quality" ? "최고품질" : "균형"} 장면 검수 완료`);
+    markStep("scenes", "done", `${sceneGenerationMode === "fast" ? "빠른" : sceneGenerationMode === "quality" ? "Dream Y 명장" : "균형"} 장면 검수 완료`);
     setMessage("장면 준비가 끝났습니다. 승인 대본으로 한국어 음성을 생성합니다.");
     setActiveStep("voice");
   }
@@ -1836,10 +1920,10 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
                 <b>빠르게</b><span>후보 1장 · 빠른 검수 · 생성 1회</span>
               </button>
               <button type="button" className={sceneGenerationMode === "balanced" ? styles.selectedChoice : ""} onClick={() => setSceneGenerationMode("balanced")}>
-                <b>균형 · 추천</b><span>후보 2장 · 실패 시 1회 자동 재생성</span>
+                <b>균형</b><span>후보 2장 · 실패 시 1회 자동 재생성</span>
               </button>
               <button type="button" className={sceneGenerationMode === "quality" ? styles.selectedChoice : ""} onClick={() => setSceneGenerationMode("quality")}>
-                <b>최고품질</b><span>후보 3장 · 고해상도 마감을 별도 처리</span>
+                <b>Dream Y 명장 · 추천</b><span>후보 3장 병렬 초안 · 순차 고해상도 마감</span>
               </button>
             </div>
           </div>
@@ -1855,7 +1939,7 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
               <option value={1.2}>1.2x · 빠른 쇼츠</option>
               <option value={1.4}>1.4x · 매우 빠르게</option>
             </select><small className={styles.helper}>영상 편집 배속이며 프로젝트 생성 속도와는 별개입니다.</small></label>
-            <label>품질 기준<input value={sceneGenerationMode === "fast" ? "82점 · 빠른 검수" : sceneGenerationMode === "quality" ? "88점 · 최고품질 2단계" : "85점 · 균형 검수"} readOnly /></label>
+            <label>품질 기준<input value={sceneGenerationMode === "fast" ? "82점 · 빠른 검수" : sceneGenerationMode === "quality" ? "88점 · 명장 병렬 초안 + 연속성 마감" : "85점 · 균형 검수"} readOnly /></label>
           </div>
           <button className={styles.primary} type="button" onClick={() => void createProject()} disabled={Boolean(busy)}>
             {busy === "project" ? "프로젝트 생성 중..." : "영상 프로젝트 생성"}
