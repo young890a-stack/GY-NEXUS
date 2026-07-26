@@ -247,6 +247,2669 @@ type ProjectResponse = {
   } | null;
 };
 
+export type ShortsProductionDraft = {
+  runId: string;
+  variantId: string;
+  productName: string;
+  productDescription: string;
+  productUrl: string;
+  productImageUrl: string;
+  priceText: string;
+  duration: 15 | 20 | 30;
+  hookStyle: string;
+  factoryResult: ContentFactoryPackage;
+};
+
+type BackgroundSceneJob = {
+  jobId: string;
+  projectId: string;
+  status: "queued" | "processing" | "retry" | "completed" | "failed" | "cancelled";
+  currentStep: string;
+  progress: number;
+  approvedScenes: number;
+  totalScenes: number;
+  attempts: number;
+  maxAttempts: number;
+  message: string;
+  lastError: string;
+  notificationUnread: boolean;
+  updatedAt: string;
+};
+
+const initialSteps: CanvasStep[] = [
+  { key: "product", number: "01", label: "상품", description: "제휴링크·상품정보", state: "waiting", detail: "" },
+  { key: "strategy", number: "02", label: "키워드·대본", description: "훅·대본·SEO", state: "waiting", detail: "" },
+  { key: "assets", number: "03", label: "상품 사진", description: "상품 정체성 소재", state: "waiting", detail: "" },
+  { key: "project", number: "04", label: "프로젝트", description: "제작 기준 저장", state: "waiting", detail: "" },
+  { key: "analysis", number: "05", label: "Gemini 소재", description: "내 영상 자동 선별", state: "waiting", detail: "" },
+  { key: "scenes", number: "06", label: "장면", description: "선별 컷·AI 장면", state: "waiting", detail: "" },
+  { key: "voice", number: "07", label: "음성·음악", description: "문장 음성·효과음", state: "waiting", detail: "" },
+  { key: "thumbnail", number: "08", label: "썸네일", description: "미리캔버스 패키지", state: "waiting", detail: "" },
+  { key: "render", number: "09", label: "영상 합성", description: "최종 MP4", state: "waiting", detail: "" },
+  { key: "publish", number: "10", label: "게시", description: "YouTube 비공개 대기", state: "waiting", detail: "" },
+];
+
+function safeFileName(value: string) {
+  return value.replace(/[\\/:*?"<>|]/g, "_").trim() || "GY-shopping-shorts";
+}
+
+function downloadText(fileName: string, content: string, mime = "text/plain") {
+  const blob = new Blob([content], { type: `${mime};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+const MIRICANVAS_FONT_LABELS: Record<ThumbnailFontPreset, string> = {
+  "gmarket-bold": "지마켓산스 Bold",
+  "nanum-round": "나눔스퀘어라운드 Bold",
+  "cafe24-surround-air": "카페24 써라운드 에어",
+  "one-mobile-pop": "원스토어 모바일POP체",
+  "one-mobile-title": "원스토어 모바일고딕 제목체",
+  "esamanru-bold": "이사만루 Bold",
+};
+
+function defaultFontForStyle(profile: ThumbnailStyleProfile): ThumbnailFontPreset {
+  if (profile === "deal") return "one-mobile-pop";
+  if (profile === "it-info") return "one-mobile-title";
+  if (profile === "review") return "nanum-round";
+  return "gmarket-bold";
+}
+
+function buildThumbnailVariants(params: {
+  styleProfile: ThumbnailStyleProfile;
+  fontPreset: ThumbnailFontPreset;
+  mainText: string;
+  subText: string;
+  badgeText: string;
+  productName: string;
+  factoryResult: ContentFactoryPackage | null;
+}): ThumbnailVariant[] {
+  const fallbackSub = params.subText || (params.factoryResult?.creative.thumbnailCopy?.[1] ?? "지금 많이 찾는 이유");
+  const baseTitle = params.mainText || (params.factoryResult?.creative.thumbnailCopy?.[0] ?? params.productName);
+  const badge = params.badgeText || (params.factoryResult?.creative.thumbnailCopy?.[2] ?? "지금 확인");
+  const alternate = params.styleProfile === "deal" ? "오늘만 가격체크" : params.styleProfile === "it-info" ? "기능 핵심 정리" : params.styleProfile === "review" ? "실사용 후기" : "생활꿀템 추천";
+  return [
+    { id: "thumb-vertical-main", title: baseTitle.slice(0, 28), subtitle: fallbackSub.slice(0, 40), badge: badge.slice(0, 18), fontPreset: params.fontPreset, layout: "상단 메인 + 하단 상품 강조", canvas: "1080x1920", accent: "민트·옐로 포인트" },
+    { id: "thumb-vertical-strong", title: (params.factoryResult?.shorts.hook || baseTitle).slice(0, 28), subtitle: alternate.slice(0, 40), badge: "클릭 유도", fontPreset: params.styleProfile === "deal" ? "one-mobile-pop" : params.fontPreset, layout: "중앙 대제목 + 좌상단 배지", canvas: "1080x1920", accent: "네이비·레몬 대비" },
+    { id: "thumb-youtube-wide", title: baseTitle.slice(0, 26), subtitle: fallbackSub.slice(0, 32), badge: badge.slice(0, 14), fontPreset: params.styleProfile === "it-info" ? "one-mobile-title" : params.fontPreset, layout: "좌측 제목 + 우측 상품/인물", canvas: "1280x720", accent: "화이트·블루 클린" },
+  ];
+}
+
+async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  let payload: unknown = {};
+  try {
+    payload = await response.json();
+  } catch {
+    payload = {};
+  }
+  const record = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  if (!response.ok || record.success === false) {
+    throw new Error(String(record.message || `${response.status} 요청 실패`));
+  }
+  return payload as T;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+export default function ShortsProductionHub({
+  initialMode = "guided",
+  initialAffiliateUrl = "",
+  initialDraft,
+  initialAutoStart = false,
+}: {
+  initialMode?: Mode;
+  initialAffiliateUrl?: string;
+  initialDraft?: ShortsProductionDraft;
+  initialAutoStart?: boolean;
+}) {
+  const [mode, setMode] = useState<Mode>(initialMode);
+  const [sourceStrategy, setSourceStrategy] = useState<SourceStrategy>("korean-original");
+  const [activeStep, setActiveStep] = useState<StepKey>("product");
+  const [steps, setSteps] = useState<CanvasStep[]>(initialSteps);
+
+  const [affiliateUrl, setAffiliateUrl] = useState(initialDraft?.productUrl || initialAffiliateUrl);
+  const [productName, setProductName] = useState(initialDraft?.productName || "");
+  const [description, setDescription] = useState(initialDraft?.productDescription || "");
+  const [productImageUrl, setProductImageUrl] = useState(initialDraft?.productImageUrl || "");
+  const [priceText, setPriceText] = useState(initialDraft?.priceText || "");
+  const [platform, setPlatform] = useState("");
+  const [trendKeywords, setTrendKeywords] = useState<TrendKeyword[]>([]);
+  const [selectedTrendKeywords, setSelectedTrendKeywords] = useState<string[]>([]);
+
+  const [duration, setDuration] = useState<15 | 20 | 25 | 30>(initialDraft?.duration || 20);
+  const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.2 | 1.4>(1);
+  const [sceneGenerationMode, setSceneGenerationMode] = useState<SceneGenerationMode>("quality");
+  const [tone, setTone] = useState("친근하고 재미있는 생활 밀착형");
+  const [style, setStyle] = useState<"problem-solution" | "ugc-review" | "how-to" | "cinematic-product">("problem-solution");
+  const [voicePreset, setVoicePreset] = useState<VoicePreset>("marin");
+  const [musicMood, setMusicMood] = useState("bright-commerce");
+  const [sfxMode, setSfxMode] = useState<"recommended" | "minimal" | "none">("recommended");
+
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [referenceImageUrls, setReferenceImageUrls] = useState<string[]>(initialDraft?.productImageUrl ? [initialDraft.productImageUrl] : []);
+  const [factoryResult, setFactoryResult] = useState<ContentFactoryPackage | null>(initialDraft?.factoryResult || null);
+  const [draftVoiceover, setDraftVoiceover] = useState(initialDraft?.factoryResult.shorts.voiceover || "");
+  const [voiceSegments, setVoiceSegments] = useState<VoiceSegment[]>([]);
+  const [voiceMasterVolume, setVoiceMasterVolume] = useState(1);
+  const [audioAssets, setAudioAssets] = useState<AudioAsset[]>([]);
+  const [musicFiles, setMusicFiles] = useState<File[]>([]);
+  const [sfxFiles, setSfxFiles] = useState<File[]>([]);
+  const [musicTrack, setMusicTrack] = useState<MusicTrack>({
+    assetId: "",
+    name: "",
+    url: "",
+    volume: 0.16,
+    startSecond: 0,
+    fadeIn: 0.5,
+    fadeOut: 1.2,
+    loop: true,
+    autoDuck: true,
+    licenseNote: "",
+  });
+  const [sfxCues, setSfxCues] = useState<SfxCue[]>([]);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [mediaRightsConfirmed, setMediaRightsConfirmed] = useState(false);
+  const [mediaAssets, setMediaAssets] = useState<MediaAnalysisAsset[]>([]);
+  const [thumbnailStyleProfile, setThumbnailStyleProfile] = useState<ThumbnailStyleProfile>("lifehack");
+  const [thumbnailFontPreset, setThumbnailFontPreset] = useState<ThumbnailFontPreset>("gmarket-bold");
+  const [subtitleFontPreset, setSubtitleFontPreset] = useState<ThumbnailFontPreset>("gmarket-bold");
+  const [thumbnailMainText, setThumbnailMainText] = useState("");
+  const [thumbnailSubText, setThumbnailSubText] = useState("");
+  const [thumbnailBadgeText, setThumbnailBadgeText] = useState("");
+  const [thumbnailVariants, setThumbnailVariants] = useState<ThumbnailVariant[]>([]);
+  const [learningData, setLearningData] = useState<LearningEngineData>({
+    sourceChannel: "youtube",
+    views: 0,
+    impressions: 0,
+    ctr: 0,
+    averageViewPercent: 0,
+    clicks: 0,
+    orders: 0,
+    revenue: 0,
+    spend: 0,
+    saveRate: 0,
+    shareRate: 0,
+    hookStyle: "문제 해결형",
+    thumbnailStyle: "생활 꿀템형",
+    publishedAt: "",
+    lastUpdatedAt: "",
+    insights: [],
+  });
+
+  const [projectId, setProjectId] = useState("");
+  const [projectDetail, setProjectDetail] = useState<ProjectRecord | null>(null);
+  const [projectScenes, setProjectScenes] = useState<ProjectScene[]>([]);
+  const [backgroundSceneJob, setBackgroundSceneJob] = useState<BackgroundSceneJob | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+  const notifiedSceneJobRef = useRef("");
+  const [finalVideoUrl, setFinalVideoUrl] = useState("");
+  const [publishQueued, setPublishQueued] = useState(false);
+
+  const [busy, setBusy] = useState("");
+  const [message, setMessage] = useState("제휴링크 또는 상품정보를 입력해 첫 쇼핑 쇼츠 프로젝트를 시작하세요.");
+  const [error, setError] = useState("");
+
+  const completedCount = useMemo(
+    () => steps.filter((step) => step.state === "done").length,
+    [steps],
+  );
+  const progressPercent = Math.round((completedCount / steps.length) * 100);
+  const currentStep = steps.find((step) => step.key === activeStep) || steps[0];
+  const nextWaitingStep = steps.find((step) => step.state !== "done");
+
+  useEffect(() => {
+    if (typeof Notification !== "undefined") setNotificationPermission(Notification.permission);
+  }, []);
+
+  useEffect(() => {
+    if (!projectId) {
+      setBackgroundSceneJob(null);
+      return;
+    }
+    let disposed = false;
+    let polling = false;
+
+    const refresh = async () => {
+      if (polling || disposed) return;
+      polling = true;
+      try {
+        const data = await jsonRequest<{ jobId?: string; job?: Omit<BackgroundSceneJob, "jobId"> | null }>(
+          `/api/creative-studio-pro/projects/${projectId}/scene-job`,
+          { cache: "no-store" },
+        );
+        if (disposed) return;
+        const nextJob = data.job ? { ...data.job, jobId: String(data.jobId || "") } : null;
+        setBackgroundSceneJob(nextJob);
+        if (!nextJob) return;
+
+        const active = ["queued", "processing", "retry"].includes(nextJob.status);
+        if (active) {
+          markStep("scenes", "running", `${nextJob.approvedScenes}/${nextJob.totalScenes || 0}개 완료`);
+          setMessage(nextJob.message);
+        }
+
+        const terminal = ["completed", "failed", "cancelled"].includes(nextJob.status);
+        if (terminal && nextJob.jobId && notifiedSceneJobRef.current !== nextJob.jobId) {
+          notifiedSceneJobRef.current = nextJob.jobId;
+          const latest = await jsonRequest<ProjectResponse>(
+            `/api/creative-studio-pro/projects/${projectId}`,
+            { cache: "no-store" },
+          );
+          if (disposed) return;
+          setProjectScenes(Array.isArray(latest.scenes) ? latest.scenes : []);
+          setProjectDetail(latest.project || null);
+          if (nextJob.status === "completed") {
+            markStep("scenes", "done", "백그라운드 명장 검수 완료");
+            setMessage(nextJob.message);
+            setActiveStep("voice");
+          } else {
+            markStep("scenes", "error", nextJob.message);
+            setError(nextJob.lastError || nextJob.message);
+          }
+          if (notificationPermission === "granted" && typeof Notification !== "undefined") {
+            new Notification(
+              nextJob.status === "completed" ? "GY-NEXUS 장면 제작 완료" : "GY-NEXUS 장면 확인 필요",
+              { body: nextJob.message },
+            );
+          }
+        }
+      } catch {
+        // Polling errors are temporary; the durable server job continues independently.
+      } finally {
+        polling = false;
+      }
+    };
+
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 3500);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [projectId, notificationPermission]);
+
+  function markStep(key: StepKey, state: StepState, detail = "") {
+    setSteps((current) => current.map((step) => step.key === key ? { ...step, state, detail } : step));
+  }
+
+  function moveTo(key: StepKey) {
+    setActiveStep(key);
+    setError("");
+  }
+
+
+  function makeVoiceSegments(result: ContentFactoryPackage, preset: VoicePreset = voicePreset): VoiceSegment[] {
+    return result.shorts.scenes.map((scene, index) => ({
+      id: `voice-${index + 1}`,
+      startSecond: scene.start,
+      endSecond: scene.end,
+      text: scene.narration || scene.subtitle,
+      voice: preset,
+      speed: 1,
+      volume: 1,
+      delivery: index === 0 ? "빠르고 시선을 끌게" : index === result.shorts.scenes.length - 1 ? "부담 없이 행동을 유도하게" : "자연스럽고 또렷하게",
+      audioUrl: "",
+    }));
+  }
+
+  function effectiveVoiceSegments() {
+    if (voiceSegments.length) return voiceSegments;
+    if (factoryResult) return makeVoiceSegments(factoryResult);
+    return projectScenes.map((scene, index) => ({
+      id: `voice-${index + 1}`,
+      startSecond: Number(scene.start_second) || index * 2,
+      endSecond: Number(scene.end_second) || index * 2 + 2,
+      text: scene.narration || scene.subtitle_text || "",
+      voice: voicePreset,
+      speed: 1,
+      volume: 1,
+      delivery: "자연스럽고 또렷하게",
+      audioUrl: "",
+    })).filter((segment) => segment.text);
+  }
+
+  function updateVoiceSegment(id: string, patch: Partial<VoiceSegment>) {
+    setVoiceSegments((current) => current.map((segment) => segment.id === id ? { ...segment, ...patch, audioUrl: patch.text !== undefined || patch.voice !== undefined || patch.delivery !== undefined ? "" : segment.audioUrl } : segment));
+  }
+
+  function updateSfxCue(id: string, patch: Partial<SfxCue>) {
+    setSfxCues((current) => current.map((cue) => cue.id === id ? { ...cue, ...patch } : cue));
+  }
+
+  function addSfxCue(asset: AudioAsset) {
+    const nextIndex = sfxCues.length;
+    setSfxCues((current) => [...current, {
+      id: `sfx-cue-${Date.now()}-${nextIndex}`,
+      assetId: asset.id,
+      name: asset.name,
+      url: asset.url,
+      startSecond: Math.min(duration - 0.2, nextIndex * 2),
+      durationSeconds: 2,
+      volume: 0.7,
+    }]);
+  }
+
+  function seedThumbnailDrafts(result: ContentFactoryPackage) {
+    const styleDefaults: Record<ThumbnailStyleProfile, { font: ThumbnailFontPreset; subtitle: ThumbnailFontPreset; }> = {
+      lifehack: { font: "gmarket-bold", subtitle: "gmarket-bold" },
+      deal: { font: "one-mobile-pop", subtitle: "gmarket-bold" },
+      "it-info": { font: "one-mobile-title", subtitle: "one-mobile-title" },
+      review: { font: "nanum-round", subtitle: "nanum-round" },
+    };
+    const chosen = styleDefaults[thumbnailStyleProfile];
+    setThumbnailFontPreset((current) => current || chosen.font);
+    setSubtitleFontPreset((current) => current || chosen.subtitle);
+    setThumbnailMainText((current) => current || result.creative.thumbnailCopy?.[0] || result.shorts.hook || productName);
+    setThumbnailSubText((current) => current || result.creative.thumbnailCopy?.[1] || result.seo.primaryKeyword || "대표님 승인 문구로 교체 가능");
+    setThumbnailBadgeText((current) => current || result.creative.thumbnailCopy?.[2] || "지금 확인");
+  }
+
+  function currentThumbnailPackage(): ThumbnailPackage {
+    const variants = thumbnailVariants.length ? thumbnailVariants : buildThumbnailVariants({
+      styleProfile: thumbnailStyleProfile,
+      fontPreset: thumbnailFontPreset,
+      mainText: thumbnailMainText,
+      subText: thumbnailSubText,
+      badgeText: thumbnailBadgeText,
+      productName,
+      factoryResult,
+    });
+    return {
+      styleProfile: thumbnailStyleProfile,
+      fontPreset: thumbnailFontPreset,
+      subtitlePreset: subtitleFontPreset,
+      mainText: thumbnailMainText,
+      subText: thumbnailSubText,
+      badgeText: thumbnailBadgeText,
+      variants,
+      miricanvasGuide: [
+        "미리캔버스 새 디자인 열기",
+        "세로 쇼츠 커버는 1080x1920, 유튜브 썸네일은 1280x720 선택",
+        `메인 글씨체: ${MIRICANVAS_FONT_LABELS[thumbnailFontPreset]}`,
+        `자막/타이틀 카드 프리셋: ${MIRICANVAS_FONT_LABELS[subtitleFontPreset]}`,
+        "상품 이미지는 우측 또는 하단, 문구는 최대 2줄로 짧게 유지",
+        "강조 단어는 노랑·민트·화이트 중 1개만 사용",
+      ],
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  async function saveThumbnailPackage() {
+    if (!projectId) {
+      setError("먼저 영상 프로젝트를 만들어주세요.");
+      return;
+    }
+    setBusy("thumbnail-save");
+    setError("");
+    try {
+      const payload = currentThumbnailPackage();
+      const data = await jsonRequest<{ success?: boolean; thumbnailPackage?: ThumbnailPackage }>(
+        `/api/creative-studio-pro/projects/${projectId}/thumbnail-package`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      if (data.thumbnailPackage?.variants) setThumbnailVariants(data.thumbnailPackage.variants);
+      markStep("thumbnail", "done", `${(data.thumbnailPackage?.variants || payload.variants).length}개 썸네일 시안 저장`);
+      setMessage("미리캔버스 작업 패키지와 글씨체 프리셋을 프로젝트에 저장했습니다.");
+      setActiveStep("render");
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "썸네일 패키지 저장 실패";
+      setError(reason);
+      markStep("thumbnail", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function regenerateThumbnailVariants() {
+    const variants = buildThumbnailVariants({
+      styleProfile: thumbnailStyleProfile,
+      fontPreset: thumbnailFontPreset,
+      mainText: thumbnailMainText,
+      subText: thumbnailSubText,
+      badgeText: thumbnailBadgeText,
+      productName,
+      factoryResult,
+    });
+    setThumbnailVariants(variants);
+    markStep("thumbnail", "running", `${variants.length}개 시안 미리보기 생성`);
+    setMessage("미리캔버스용 썸네일 시안을 다시 만들었습니다.");
+  }
+
+  function downloadThumbnailPackage() {
+    const payload = currentThumbnailPackage();
+    const baseName = safeFileName(productName || "GY-shopping-shorts");
+    const markdown = [
+      `# ${productName || "쇼핑 쇼츠"} 미리캔버스 썸네일 패키지`,
+      '',
+      `- 스타일: ${thumbnailStyleProfile}`,
+      `- 메인 글씨체: ${MIRICANVAS_FONT_LABELS[payload.fontPreset]}`,
+      `- 자막/타이틀 카드 프리셋: ${MIRICANVAS_FONT_LABELS[payload.subtitlePreset]}`,
+      '',
+      '## 메인 문구',
+      payload.mainText,
+      '',
+      '## 보조 문구',
+      payload.subText,
+      '',
+      '## 배지 문구',
+      payload.badgeText,
+      '',
+      '## 시안',
+      ...payload.variants.map((variant, index) => `${index + 1}. ${variant.canvas} | ${MIRICANVAS_FONT_LABELS[variant.fontPreset]} | ${variant.layout} | ${variant.title} | ${variant.subtitle} | ${variant.badge}`),
+      '',
+      '## 미리캔버스 작업 순서',
+      ...payload.miricanvasGuide.map((item) => `- ${item}`),
+    ].join("\n");
+    downloadText(`${baseName}-miricanvas-thumbnail-package.md`, markdown, "text/markdown");
+    downloadText(`${baseName}-miricanvas-thumbnail-package.json`, JSON.stringify(payload, null, 2), "application/json");
+    setMessage("미리캔버스용 썸네일 패키지를 다운로드했습니다.");
+  }
+
+  function openMiricanvas() {
+    window.open("https://www.miricanvas.com/", "_blank", "noopener,noreferrer");
+  }
+
+  function computeLearningInsights(base: LearningEngineData): LearningInsight[] {
+    const insights: LearningInsight[] = [];
+    if (base.ctr < 3 && (base.impressions > 0 || base.views > 0)) {
+      insights.push({ area: "thumbnail", summary: "노출 대비 클릭률이 낮습니다.", action: "썸네일 메인 문구를 더 짧게 하고, 미리캔버스 글씨체는 원스토어 모바일POP체 또는 지마켓산스 Bold로 테스트하세요." });
+    } else {
+      insights.push({ area: "thumbnail", summary: "썸네일 반응이 안정적입니다.", action: "현재 썸네일 스타일을 유지하되 색상 대비만 1개 요소씩 A/B 테스트하세요." });
+    }
+    if (base.averageViewPercent < 45 && base.views > 0) {
+      insights.push({ area: "hook", summary: "시청 유지율이 낮아 첫 2초 훅이 약합니다.", action: "첫 문장을 더 짧게 바꾸고, 문제 제기 → 해결 → CTA 순서를 더 빠르게 배치하세요." });
+    } else {
+      insights.push({ area: "hook", summary: "첫 훅이 비교적 잘 버티고 있습니다.", action: "현재 훅 구조를 유지하면서 제품 디테일 컷만 더 빠르게 이어붙이세요." });
+    }
+    const clickRate = base.views > 0 ? (base.clicks / base.views) * 100 : 0;
+    if (clickRate < 2 && base.views > 0) {
+      insights.push({ area: "offer", summary: "조회수 대비 링크 클릭이 낮습니다.", action: "고정댓글 CTA를 더 명확하게 쓰고, 대본 마지막 문장에 혜택·가격 포인트를 넣으세요." });
+    } else {
+      insights.push({ area: "offer", summary: "링크 클릭 흐름은 나쁘지 않습니다.", action: "같은 CTA를 유지하고 클릭이 높은 상품군을 우선 반복하세요." });
+    }
+    const orderRate = base.clicks > 0 ? (base.orders / base.clicks) * 100 : 0;
+    if (orderRate < 5 && base.clicks > 0) {
+      insights.push({ area: "voice", summary: "클릭 후 전환이 약합니다.", action: "음성 톤을 더 신뢰형으로 바꾸고 효능 표현 대신 실제 사용 장면과 구성품 설명을 강화하세요." });
+    } else {
+      insights.push({ area: "voice", summary: "클릭 후 전환 흐름이 양호합니다.", action: "현재 음성 톤과 설명 구조를 다음 상품에도 재사용하세요." });
+    }
+    const profit = base.revenue - base.spend;
+    insights.push({ area: "timing", summary: `현재 추정 순수익은 ${profit.toLocaleString("ko-KR")}원입니다.`, action: profit >= 0 ? "순이익이 나는 상품군·훅·썸네일 조합을 우선 복제하세요." : "비용이 더 큰 경우 조회수보다 클릭과 전환이 높은 상품부터 다시 테스트하세요." });
+    return insights.slice(0, 5);
+  }
+
+  function hydrateLearningData(source?: Partial<LearningEngineData> | null): LearningEngineData {
+    const base: LearningEngineData = {
+      sourceChannel: source?.sourceChannel === "instagram" ? "instagram" : source?.sourceChannel === "manual" ? "manual" : "youtube",
+      views: Number(source?.views || 0),
+      impressions: Number(source?.impressions || 0),
+      ctr: Number(source?.ctr || 0),
+      averageViewPercent: Number(source?.averageViewPercent || 0),
+      clicks: Number(source?.clicks || 0),
+      orders: Number(source?.orders || 0),
+      revenue: Number(source?.revenue || 0),
+      spend: Number(source?.spend || 0),
+      saveRate: Number(source?.saveRate || 0),
+      shareRate: Number(source?.shareRate || 0),
+      hookStyle: String(source?.hookStyle || "문제 해결형"),
+      thumbnailStyle: String(source?.thumbnailStyle || "생활 꿀템형"),
+      publishedAt: String(source?.publishedAt || ""),
+      lastUpdatedAt: String(source?.lastUpdatedAt || ""),
+      insights: Array.isArray(source?.insights) ? (source.insights as LearningInsight[]) : [],
+    };
+    return { ...base, insights: base.insights.length ? base.insights : computeLearningInsights(base) };
+  }
+
+  function updateLearningField<K extends keyof LearningEngineData>(key: K, value: LearningEngineData[K]) {
+    setLearningData((current) => hydrateLearningData({ ...current, [key]: value, lastUpdatedAt: new Date().toISOString() }));
+  }
+
+  async function saveLearningEngine() {
+    if (!projectId || busy) {
+      if (!projectId) setError("먼저 영상 프로젝트를 만들어주세요.");
+      return;
+    }
+    setBusy("learning-save");
+    setError("");
+    try {
+      const payload = hydrateLearningData({ ...learningData, lastUpdatedAt: new Date().toISOString() });
+      const data = await jsonRequest<{ success?: boolean; learningEngine?: LearningEngineData }>(`/api/creative-studio-pro/projects/${projectId}/learning-engine`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setLearningData(hydrateLearningData(data.learningEngine || payload));
+      setMessage("게시 성과·클릭·판매 학습 엔진을 저장했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "학습 엔진 저장 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function downloadLearningReport() {
+    const data = hydrateLearningData(learningData);
+    const baseName = safeFileName(productName || "GY-learning-report");
+    const markdown = [
+      `# ${productName || "쇼핑 쇼츠"} 성과 학습 리포트`,
+      "",
+      `- 채널: ${data.sourceChannel}`,
+      `- 조회수: ${data.views}`,
+      `- 노출수: ${data.impressions}`,
+      `- CTR: ${data.ctr}%`,
+      `- 평균 시청률: ${data.averageViewPercent}%`,
+      `- 링크 클릭: ${data.clicks}`,
+      `- 주문수: ${data.orders}`,
+      `- 매출: ${data.revenue}원`,
+      `- 비용: ${data.spend}원`,
+      "",
+      "## 학습 인사이트",
+      ...data.insights.map((item, index) => `${index + 1}. [${item.area}] ${item.summary} / 실행: ${item.action}`),
+    ].join("\n");
+    downloadText(`${baseName}-learning-report.md`, markdown, "text/markdown");
+    downloadText(`${baseName}-learning-report.json`, JSON.stringify(data, null, 2), "application/json");
+    setMessage("학습 엔진 리포트를 다운로드했습니다.");
+  }
+
+  async function uploadAudioAssets(kind: "music" | "sfx", files: File[]) {
+    if (!projectId) throw new Error("먼저 영상 프로젝트를 만들어주세요.");
+    if (!files.length) throw new Error("업로드할 음원 파일을 선택해주세요.");
+    const form = new FormData();
+    form.append("kind", kind);
+    files.slice(0, 8).forEach((file) => form.append("files", file));
+    const data = await jsonRequest<{ success?: boolean; assets?: AudioAsset[]; allAssets?: AudioAsset[] }>(
+      `/api/creative-studio-pro/projects/${projectId}/audio-assets`,
+      { method: "POST", body: form },
+    );
+    const assets = Array.isArray(data.assets) ? data.assets : [];
+    if (Array.isArray(data.allAssets)) setAudioAssets(data.allAssets);
+    else setAudioAssets((current) => [...current, ...assets]);
+    if (kind === "music" && assets[0]) {
+      const asset = assets[0];
+      setMusicTrack((current) => ({ ...current, assetId: asset.id, name: asset.name, url: asset.url }));
+    }
+    return assets;
+  }
+
+  async function saveAudioTimelineCore(id: string, segments = effectiveVoiceSegments()) {
+    const data = await jsonRequest<{ success?: boolean; timeline?: AudioTimeline }>(
+      `/api/creative-studio-pro/projects/${id}/audio-timeline`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voiceMasterVolume,
+          voiceSegments: segments,
+          music: musicTrack,
+          sfxCues,
+          musicMood,
+          sfxMode,
+        }),
+      },
+    );
+    if (data.timeline?.voiceSegments) setVoiceSegments(data.timeline.voiceSegments);
+    return data.timeline;
+  }
+
+  async function saveAudioTimeline() {
+    if (!projectId || busy) {
+      if (!projectId) setError("먼저 영상 프로젝트를 만들어주세요.");
+      return;
+    }
+    setBusy("audio-save");
+    setError("");
+    try {
+      await saveAudioTimelineCore(projectId);
+      setMessage("문장별 음성·배경음악·효과음 타임라인을 저장했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "오디오 타임라인 저장 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function uploadMusic() {
+    if (busy) return;
+    setBusy("music-upload");
+    setError("");
+    try {
+      const assets = await uploadAudioAssets("music", musicFiles);
+      setMessage(`${assets.length}개 배경음악을 프로젝트에 연결했습니다.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "배경음악 업로드 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function uploadSfx() {
+    if (busy) return;
+    setBusy("sfx-upload");
+    setError("");
+    try {
+      const assets = await uploadAudioAssets("sfx", sfxFiles);
+      setMessage(`${assets.length}개 효과음을 소재함에 저장했습니다.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "효과음 업로드 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function regenerateVoiceSegment(segmentId: string) {
+    if (!projectId || busy) return;
+    setBusy(`voice-${segmentId}`);
+    setError("");
+    try {
+      const segments = effectiveVoiceSegments();
+      await saveAudioTimelineCore(projectId, segments);
+      const data = await jsonRequest<{ success?: boolean; voiceSegments?: VoiceSegment[] }>(
+        `/api/creative-studio-pro/projects/${projectId}/voice`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ segments, segmentId }),
+        },
+      );
+      if (Array.isArray(data.voiceSegments)) setVoiceSegments(data.voiceSegments);
+      setMessage("선택한 문장의 음성만 다시 생성했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "문장 음성 재생성 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function updateMediaCut(assetId: string, order: number, patch: Partial<GeminiSelectedCut>) {
+    setMediaAssets((current) => current.map((asset) => asset.id !== assetId || !asset.analysis ? asset : {
+      ...asset,
+      analysis: {
+        ...asset.analysis,
+        recommendedCuts: asset.analysis.recommendedCuts.map((cut) => cut.order === order ? { ...cut, ...patch } : cut),
+      },
+    }));
+  }
+
+  async function refreshMediaAssets(id = projectId) {
+    if (!id) return [] as MediaAnalysisAsset[];
+    const data = await jsonRequest<{ success?: boolean; assets?: MediaAnalysisAsset[] }>(
+      `/api/creative-studio-pro/projects/${id}/media-analysis`,
+      { cache: "no-store" },
+    );
+    const assets = Array.isArray(data.assets) ? data.assets : [];
+    setMediaAssets(assets);
+    return assets;
+  }
+
+  async function pollMediaAnalysis(id: string, assetId: string) {
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      const assets = await refreshMediaAssets(id);
+      const asset = assets.find((item) => item.id === assetId);
+      if (asset?.status === "completed") {
+        markStep("analysis", "done", `Gemini 추천 컷 ${asset.analysis?.recommendedCuts.length || 0}개`);
+        setMessage("Gemini가 내 영상에서 훅·사용·디테일·CTA 구간을 자동 선별했습니다.");
+        setActiveStep("scenes");
+        return asset;
+      }
+      if (asset?.status === "failed") throw new Error(asset.error || "Gemini 소재 분석 실패");
+      setMessage(asset?.status === "analyzing"
+        ? "Gemini가 제품 노출·움직임·화질·첫 2초 훅을 분석하고 있습니다."
+        : "영상 Worker가 프레임과 정확한 시간정보를 추출하고 있습니다.");
+      await sleep(attempt === 0 ? 1200 : 4000);
+    }
+    throw new Error("소재 분석이 오래 걸리고 있습니다. 완료된 데이터는 프로젝트에 저장됩니다.");
+  }
+
+  async function analyzeOwnedVideoCore(id: string, file: File) {
+    if (!mediaRightsConfirmed) throw new Error("직접 촬영했거나 사용 권한이 있는 영상인지 확인해주세요.");
+    if (!file.type.startsWith("video/")) throw new Error("분석할 영상 파일을 선택해주세요.");
+    markStep("analysis", "running");
+    setMessage("내 영상을 Supabase 저장소에 직접 업로드하고 있습니다.");
+
+    const upload = await jsonRequest<{
+      success?: boolean; bucket: string; path: string; token: string; signedUrl?: string; publicUrl: string; supabaseUrl?: string; anonKey?: string;
+    }>(`/api/creative-studio-pro/projects/${id}/media-upload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: file.name, mimeType: file.type, sizeBytes: file.size }),
+    });
+
+    if (upload.supabaseUrl && upload.anonKey && upload.token) {
+      const client = createClient(upload.supabaseUrl, upload.anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+      const { error: uploadError } = await client.storage.from(upload.bucket).uploadToSignedUrl(upload.path, upload.token, file, { contentType: file.type });
+      if (uploadError) throw uploadError;
+    } else if (upload.signedUrl) {
+      const response = await fetch(upload.signedUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      if (!response.ok) throw new Error(`영상 직접 업로드 실패: ${response.status}`);
+    } else {
+      throw new Error("Supabase 영상 업로드 연결값을 받지 못했습니다.");
+    }
+
+    const queued = await jsonRequest<{ success?: boolean; asset?: MediaAnalysisAsset }>(
+      `/api/creative-studio-pro/projects/${id}/media-analysis`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, url: upload.publicUrl, path: upload.path, mimeType: file.type, sizeBytes: file.size }),
+      },
+    );
+    if (!queued.asset?.id) throw new Error("Gemini 소재 분석 작업 ID를 받지 못했습니다.");
+    setMediaAssets((current) => [...current.filter((item) => item.id !== queued.asset?.id), queued.asset as MediaAnalysisAsset]);
+    return pollMediaAnalysis(id, queued.asset.id);
+  }
+
+  async function analyzeOwnedVideo() {
+    if (!projectId || !videoFile || busy) {
+      if (!projectId) setError("먼저 영상 프로젝트를 만들어주세요.");
+      else if (!videoFile) setError("분석할 내 영상 파일을 선택해주세요.");
+      return;
+    }
+    setBusy("analysis");
+    setError("");
+    try {
+      await analyzeOwnedVideoCore(projectId, videoFile);
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "Gemini 소재 분석 실패";
+      setError(reason);
+      markStep("analysis", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveGeminiCuts(asset: MediaAnalysisAsset) {
+    if (!projectId || !asset.analysis || busy) return;
+    setBusy("analysis-save");
+    setError("");
+    try {
+      const data = await jsonRequest<{ success?: boolean; asset?: MediaAnalysisAsset }>(
+        `/api/creative-studio-pro/projects/${projectId}/media-analysis`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assetId: asset.id, cuts: asset.analysis.recommendedCuts }),
+        },
+      );
+      if (data.asset) setMediaAssets((current) => current.map((item) => item.id === data.asset?.id ? data.asset as MediaAnalysisAsset : item));
+      markStep("analysis", "done", `Gemini 추천 컷 ${data.asset?.analysis?.recommendedCuts.length || asset.analysis.recommendedCuts.length}개 저장`);
+      setMessage("수정한 Gemini 추천 컷을 최종 편집 타임라인에 저장했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Gemini 추천 컷 저장 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function importAffiliateProduct() {
+    if (!affiliateUrl.trim() || busy) return;
+    setBusy("product");
+    setError("");
+    setMessage("제휴링크에서 상품명·이미지·가격을 불러오고 있습니다.");
+    markStep("product", "running");
+
+    try {
+      const data = await jsonRequest<{ success?: boolean; product?: ImportedProduct }>(
+        "/api/revenue-shorts/product-import",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: affiliateUrl.trim() }),
+        },
+      );
+
+      if (!data.product) throw new Error("상품 정보를 받지 못했습니다.");
+
+      setAffiliateUrl(data.product.finalUrl || affiliateUrl.trim());
+      const importedName = String(data.product.name || "").trim();
+      const importedDescription = String(data.product.description || "").trim();
+      if (!importedName || INVALID_PRODUCT_NAME.test(importedName)) {
+        setProductName("");
+        setDescription("");
+        setProductImageUrl(data.product.imageUrl || "");
+        setPriceText(data.product.priceText || "");
+        setPlatform(data.product.platform || "");
+        markStep("product", "error", "상품 페이지 자동 읽기 차단 · 직접 입력 필요");
+        setError(data.product.warning || "판매 사이트가 자동 읽기를 차단했습니다. 실제 상품명과 확인된 상품 설명을 직접 입력해주세요.");
+        return;
+      }
+      setProductName(importedName);
+      setDescription(importedDescription);
+      setProductImageUrl(data.product.imageUrl || "");
+      setPriceText(data.product.priceText || "");
+      setPlatform(data.product.platform || "");
+      markStep("product", "done", data.product.name || "상품정보 준비 완료");
+      setMessage(data.product.warning || "상품정보를 불러왔습니다. 대본과 키워드를 만들 차례입니다.");
+      setActiveStep("strategy");
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "상품정보를 불러오지 못했습니다.";
+      setError(reason);
+      markStep("product", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function generateStrategyCore(): Promise<ContentFactoryPackage> {
+    if (!productName.trim()) throw new Error("상품명을 먼저 입력해주세요.");
+
+    markStep("strategy", "running");
+    setMessage("Dream Y가 한국형 훅·대본·장면표·SEO·썸네일 문구를 만들고 있습니다.");
+
+    const data = await jsonRequest<{ success?: boolean; result?: ContentFactoryPackage }>(
+      "/api/content-factory/generate",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: productName.trim(),
+          description: [
+            description.trim(),
+            selectedTrendKeywords.length
+              ? `현재 한국 급상승 키워드 참고: ${selectedTrendKeywords.join(", ")}. 실제 상품과 자연스럽게 연결되는 키워드만 사용한다.`
+              : "",
+          ].filter(Boolean).join("\n"),
+          affiliateUrl: affiliateUrl.trim(),
+          imageUrl: productImageUrl.trim(),
+          targetAudience: "20~40대 한국 시청자",
+          shortsDuration: duration,
+          tone,
+          blogGoal: "sales",
+          blogLength: "standard",
+        }),
+      },
+    );
+
+    if (!data.result) throw new Error("쇼츠 전략 패키지를 받지 못했습니다.");
+
+    setFactoryResult(data.result);
+    setDraftVoiceover(data.result.shorts.voiceover);
+    setVoiceSegments(makeVoiceSegments(data.result));
+    seedThumbnailDrafts(data.result);
+    setThumbnailVariants(buildThumbnailVariants({ styleProfile: thumbnailStyleProfile, fontPreset: thumbnailFontPreset, mainText: thumbnailMainText || data.result.creative.thumbnailCopy?.[0] || data.result.shorts.hook, subText: thumbnailSubText || data.result.creative.thumbnailCopy?.[1] || data.result.seo.primaryKeyword, badgeText: thumbnailBadgeText || data.result.creative.thumbnailCopy?.[2] || "지금 확인", productName, factoryResult: data.result }));
+    markStep("strategy", "done", `${data.result.shorts.durationSeconds}초 대본·${data.result.shorts.scenes.length}개 장면`);
+    setMessage("대본과 장면표가 준비됐습니다. 대표님이 수정한 내용은 프로젝트 지시문에 반영됩니다.");
+    setActiveStep("assets");
+    return data.result;
+  }
+
+  async function generateStrategy() {
+    if (busy) return;
+    setBusy("strategy");
+    setError("");
+    try {
+      await generateStrategyCore();
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "쇼츠 전략 생성 실패";
+      setError(reason);
+      markStep("strategy", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function uploadReferencesCore(): Promise<string[]> {
+    markStep("assets", "running");
+    setMessage("상품 사진을 저장소에 올리고 프로젝트 소재로 연결하고 있습니다.");
+
+    let uploaded: string[] = [];
+    if (imageFiles.length) {
+      const form = new FormData();
+      imageFiles.slice(0, 6).forEach((file) => form.append("images", file));
+      const data = await jsonRequest<{ success?: boolean; urls?: string[] }>(
+        "/api/creative-studio-pro/references",
+        { method: "POST", body: form },
+      );
+      uploaded = Array.isArray(data.urls) ? data.urls : [];
+    }
+
+    const directImage = productImageUrl.trim().startsWith("https://") ? productImageUrl.trim() : "";
+    const urls = Array.from(new Set([...uploaded, directImage].filter(Boolean))).slice(0, 6);
+
+    if (!urls.length) {
+      throw new Error("실제 상품 사진 1장 이상을 선택하거나 상품 이미지 주소를 입력해주세요.");
+    }
+
+    setReferenceImageUrls(urls);
+    markStep("assets", "done", `상품 사진 ${urls.length}장 연결`);
+    setMessage("상품 소재가 준비됐습니다. 이제 영상 프로젝트와 장면을 생성합니다.");
+    setActiveStep("project");
+    return urls;
+  }
+
+  async function uploadReferences() {
+    if (busy) return;
+    setBusy("assets");
+    setError("");
+    try {
+      await uploadReferencesCore();
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "상품 사진 업로드 실패";
+      setError(reason);
+      markStep("assets", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function buildMasterPrompt(result: ContentFactoryPackage) {
+    const scenePlan = result.shorts.scenes
+      .map((scene, index) => `${index + 1}. ${scene.start}~${scene.end}초 | ${scene.visual} | 자막: ${scene.subtitle}`)
+      .join("\n");
+
+    return [
+      "GY 쇼핑 쇼츠 제작 캔버스 승인 지시",
+      `제작 방식: ${sourceStrategy}`,
+      `첫 2초 훅: ${result.shorts.hook}`,
+      `승인 대본: ${draftVoiceover || result.shorts.voiceover}`,
+      `장면 계획:\n${scenePlan}`,
+      "실제 상품의 색상·형태·버튼·로고·구성품을 바꾸지 않는다.",
+      "과장된 효능·가격·수익 보장을 피한다.",
+      "한국 시청자가 바로 이해할 수 있게 문제-사용-혜택-CTA 순서로 제작한다.",
+      sourceStrategy === "china-reference"
+        ? "중국 인기영상은 훅·촬영각도·리듬만 참고하고 원본 클립은 최종 영상에 사용하지 않는다."
+        : "대표님이 제공한 상품 사진을 중심으로 새로운 한국형 장면을 만든다.",
+    ].join("\n\n");
+  }
+
+  async function runDreamYProductization(id: string) {
+    let lastFailure: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        setMessage(attempt === 0
+          ? "Dream Y가 한국형 게시 패키지와 독립 광고검수를 진행하고 있습니다."
+          : "Dream Y가 첫 검수 결과를 스스로 보완해 한 번 더 확인하고 있습니다.");
+        await jsonRequest(`/api/creative-studio-pro/projects/${id}/productization`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ force: true }),
+        });
+        await jsonRequest(`/api/creative-studio-pro/projects/${id}/content-approval`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hookIndex: 0 }),
+        });
+        return;
+      } catch (cause) {
+        lastFailure = cause;
+        if (attempt === 0) await sleep(700);
+      }
+    }
+    throw lastFailure instanceof Error ? lastFailure : new Error("Dream Y 상품화와 품질검수를 완료하지 못했습니다.");
+  }
+
+  async function completeProjectSetup(
+    id: string,
+    sceneCount: number,
+    fallbackProject: ProjectRecord | null,
+    fallbackScenes: ProjectScene[],
+  ) {
+    await runDreamYProductization(id);
+    const latest = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
+    setProjectDetail(latest.project || fallbackProject);
+    setProjectScenes(Array.isArray(latest.scenes) ? latest.scenes : fallbackScenes);
+    setLearningData(hydrateLearningData((latest.project || fallbackProject)?.settings?.learningEngine || null));
+    markStep("project", "done", `${sceneCount}개 장면 프로젝트 생성`);
+    setMessage("프로젝트와 독립 검수가 완료됐습니다. 내 영상이 있다면 Gemini가 좋은 구간을 자동 선별합니다.");
+    setActiveStep("analysis");
+  }
+
+  async function attachChinaReference(id: string) {
+    if (sourceStrategy !== "china-reference") return;
+
+    try {
+      setMessage("도우인·샤오홍슈의 인기 구조를 참고자료로 분석하고 있습니다.");
+      const trend = await jsonRequest<{ results?: Array<Record<string, unknown>> }>(
+        "/api/creative-studio-pro/china-search",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: productName, platform: "all", limit: 8 }),
+        },
+      );
+
+      const now = Date.now();
+      const references = (Array.isArray(trend.results) ? trend.results.slice(0, 4) : [])
+        .map((item, index) => ({
+          id: `canvas-trend-${now}-${index}`,
+          platform: item.platform === "xiaohongshu" ? "xiaohongshu" : "douyin",
+          url: String(item.url || ""),
+          title: String(item.title || `중국 인기 구조 ${index + 1}`),
+          assetKind: "page-link",
+          rightsStatus: "unverified",
+          useInFinal: false,
+          includeInMixAnalysis: true,
+          notes: "훅·촬영각도·판매 순서만 분석하며 원본 영상은 최종본에 사용하지 않습니다.",
+          analysisFrameUrls: item.thumbnailUrl ? [String(item.thumbnailUrl)] : [],
+          selectedKeywords: [],
+          durationSeconds: null,
+          trimStartSecond: 0,
+          trimEndSecond: null,
+          createdAt: new Date().toISOString(),
+        }))
+        .filter((item) => item.url.startsWith("https://"));
+
+      if (!references.length) return;
+
+      await jsonRequest(`/api/creative-studio-pro/projects/${id}/media-references`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ references }),
+      });
+      await jsonRequest(`/api/creative-studio-pro/projects/${id}/editor-settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          playbackSpeed: 1.2,
+          subtitleCleanupMode: "recreate-clean",
+          sourceAudioMode: "mute-korean-tts",
+          mixStrategy: "recreate",
+        }),
+      });
+      await jsonRequest(`/api/creative-studio-pro/projects/${id}/source-mix`, { method: "POST" });
+    } catch (cause) {
+      setMessage(`중국 구조 분석은 건너뛰고 한국형 상품정보로 계속합니다. ${cause instanceof Error ? cause.message : ""}`.trim());
+    }
+  }
+
+  async function createProjectCore(
+    result: ContentFactoryPackage,
+    references: string[],
+  ): Promise<{ id: string; sceneCount: number }> {
+    if (!productName.trim() || INVALID_PRODUCT_NAME.test(productName.trim())) {
+      throw new Error("차단 화면 문구가 아닌 실제 상품명을 입력해주세요.");
+    }
+    if (description.trim().length < 5) {
+      throw new Error("광고 사실 검수를 위해 판매 페이지나 제품 포장에서 직접 확인한 상품 설명을 5자 이상 입력해주세요.");
+    }
+    markStep("project", "running");
+    setMessage("대본·썸네일·음악 설정을 하나의 영상 프로젝트로 묶고 있습니다.");
+
+    const projectReferences = sourceStrategy === "single-photo" ? references.slice(0, 1) : references;
+
+    const data = await jsonRequest<{
+      success?: boolean;
+      project?: ProjectRecord;
+      scenes?: ProjectScene[];
+    }>("/api/creative-studio-pro/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: `${productName} 쇼핑 쇼츠`,
+        productName,
+        productDescription: description.trim(),
+        productUrl: affiliateUrl,
+        affiliateUrl,
+        masterPrompt: buildMasterPrompt(result),
+        sourceMode: projectReferences.length === 1 ? "single-photo-commerce" : "premium-multi-photo",
+        sourceImageUrl: projectReferences[0],
+        referenceImageUrls: projectReferences,
+        duration,
+        ratio: "720:1280",
+        style,
+        subtitleMode: "korean",
+        voiceMode: (["cedar", "onyx", "echo"] as VoicePreset[]).includes(voicePreset) ? "male" : "female",
+        voicePreset,
+        musicMood,
+        subtitleStyle: "bold-pop",
+        thumbnailStyle: "benefit-arrow",
+        sfxMode,
+        audioTimeline: {
+          version: 2,
+          voiceMasterVolume,
+          voiceSegments: voiceSegments.length ? voiceSegments : makeVoiceSegments(result),
+          music: musicTrack,
+          sfxCues,
+        },
+        platformTargets: ["youtube", "instagram"],
+        qualityThreshold: sceneGenerationMode === "fast" ? 82 : sceneGenerationMode === "quality" ? 88 : 85,
+        maxImageRetries: sceneGenerationMode === "fast" ? 1 : sceneGenerationMode === "quality" ? 3 : 2,
+        playbackSpeed,
+        sceneGenerationMode,
+      }),
+    });
+
+    if (!data.project?.id) throw new Error("영상 프로젝트 ID를 받지 못했습니다.");
+
+    const id = data.project.id;
+    const sceneCount = Math.max(1, data.scenes?.length || Math.ceil(duration / 5));
+    setProjectId(id);
+    setProjectDetail(data.project);
+    setProjectScenes(Array.isArray(data.scenes) ? data.scenes : []);
+
+    await attachChinaReference(id);
+
+    await completeProjectSetup(id, sceneCount, data.project, Array.isArray(data.scenes) ? data.scenes : []);
+    return { id, sceneCount };
+  }
+
+  async function createProject() {
+    if (busy) return;
+    setBusy("project");
+    setError("");
+
+    try {
+      if (projectId) {
+        const sceneCount = Math.max(1, projectScenes.length || Math.ceil(duration / 5));
+        setMessage("새 프로젝트를 만들지 않고 중단된 기존 프로젝트에서 Dream Y 검수를 이어갑니다.");
+        await completeProjectSetup(projectId, sceneCount, projectDetail, projectScenes);
+        return;
+      }
+      const result = factoryResult || await generateStrategyCore();
+      const references = referenceImageUrls.length ? referenceImageUrls : await uploadReferencesCore();
+      await createProjectCore(result, references);
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "프로젝트 생성 실패";
+      setError(reason);
+      markStep("project", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function prepareScenesCore(id: string, sceneCount: number) {
+    const selectedOwnedVideo = mediaAssets.find((asset) => asset.status === "completed" && asset.analysis?.recommendedCuts.length);
+    if (selectedOwnedVideo) {
+      markStep("scenes", "done", `Gemini 선별 원본 컷 ${selectedOwnedVideo.analysis?.recommendedCuts.length || 0}개 사용`);
+      setMessage("Gemini가 선별한 내 영상 컷을 사용하므로 불필요한 AI 장면 생성을 건너뜁니다.");
+      setActiveStep("voice");
+      return;
+    }
+    markStep("scenes", "running");
+    type ScenePreparationResult = {
+      done?: boolean;
+      message?: string;
+      approved?: boolean;
+      hold?: boolean;
+      qualityStatus?: string;
+      sceneNumber?: number;
+    };
+    const requestScene = async (sceneId?: string) => {
+      let lastError: unknown = null;
+      for (let retry = 0; retry < 4; retry += 1) {
+        try {
+          return await jsonRequest<ScenePreparationResult>(
+            `/api/creative-studio-pro/projects/${id}/prepare-next`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...(sceneId ? { sceneId } : {}),
+                sceneGenerationMode,
+              }),
+            },
+          );
+        } catch (cause) {
+          lastError = cause;
+          const reason = cause instanceof Error ? cause.message : "장면 요청 실패";
+          const recoverable =
+            /504|502|503|timeout|시간|network|fetch|요청 실패|자동 복구|응답|JSON|잘렸|전송/i.test(
+              reason,
+            );
+          if (!recoverable || retry >= 3) throw cause;
+          setMessage(`작업 연결이 잠시 끊겨 Dream Y가 저장된 장면부터 자동 재개합니다. (${retry + 1}/3)`);
+          await sleep(900);
+        }
+      }
+      throw lastError;
+    };
+
+    if (sceneGenerationMode === "quality") {
+      const beforeDraft = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
+      const beforeScenes = Array.isArray(beforeDraft.scenes) ? beforeDraft.scenes : [];
+      const heldBeforeDraft = beforeScenes.find((scene) => scene.quality_status === "hold");
+      if (heldBeforeDraft) {
+        throw new Error(`장면 ${heldBeforeDraft.scene_number || ""}번이 상품 사실 검수에서 보류됐습니다.`);
+      }
+      const draftTargets = beforeScenes
+        .filter((scene) => scene.id && !["approved", "finalizing"].includes(String(scene.quality_status || "")))
+        .sort((left, right) => Number(left.scene_number || 0) - Number(right.scene_number || 0));
+      const prepareDraft = async (scene: ProjectScene) => {
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const result = await requestScene(scene.id);
+          setMessage(result.message || `장면 ${scene.scene_number || ""}의 명장 초안을 준비하고 있습니다.`);
+          if (result.qualityStatus === "finalizing" || result.qualityStatus === "approved") return;
+          if (result.hold || result.qualityStatus === "hold") {
+            throw new Error(`장면 ${result.sceneNumber || scene.scene_number || ""}번이 상품 사실 검수에서 보류됐습니다.`);
+          }
+        }
+        throw new Error(`장면 ${scene.scene_number || ""}번 초안 검수를 완료하지 못했습니다.`);
+      };
+
+      if (draftTargets.length) {
+        await prepareDraft(draftTargets[0]);
+        const remainingDrafts = draftTargets.slice(1);
+        let draftCursor = 0;
+        const draftWorker = async () => {
+          while (draftCursor < remainingDrafts.length) {
+            const scene = remainingDrafts[draftCursor];
+            draftCursor += 1;
+            await prepareDraft(scene);
+          }
+        };
+        await Promise.all(Array.from(
+          { length: Math.min(2, remainingDrafts.length) },
+          () => draftWorker(),
+        ));
+      }
+
+      const afterDraft = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
+      const finalTargets = (Array.isArray(afterDraft.scenes) ? afterDraft.scenes : [])
+        .filter((scene) => scene.id && scene.quality_status !== "approved")
+        .sort((left, right) => Number(left.scene_number || 0) - Number(right.scene_number || 0));
+      for (const scene of finalTargets) {
+        if (scene.quality_status === "hold") {
+          throw new Error(`장면 ${scene.scene_number || ""}번이 최고품질 검수에서 보류됐습니다.`);
+        }
+        let approved = false;
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const result = await requestScene(scene.id);
+          setMessage(result.message || `장면 ${scene.scene_number || ""}을 앞 장면과 이어지게 고해상도로 마감하고 있습니다.`);
+          if (result.approved || result.qualityStatus === "approved") {
+            approved = true;
+            break;
+          }
+          if (result.hold || result.qualityStatus === "hold") {
+            throw new Error(`장면 ${result.sceneNumber || scene.scene_number || ""}번이 최고품질 검수에서 보류됐습니다.`);
+          }
+        }
+        if (!approved) throw new Error(`장면 ${scene.scene_number || ""}번 최고품질 마감을 완료하지 못했습니다.`);
+      }
+    } else {
+      const maxSteps = sceneCount * 3 + 6;
+      for (let index = 0; index < maxSteps; index += 1) {
+        const result = await requestScene();
+        setMessage(result.message || `AI 장면 ${Math.min(index + 1, sceneCount)}개를 준비하고 있습니다.`);
+        if (result.done) break;
+      }
+    }
+
+    const latest = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
+    const latestScenes = Array.isArray(latest.scenes) ? latest.scenes : [];
+    setProjectScenes(latestScenes);
+    setProjectDetail(latest.project || projectDetail);
+    const incomplete = latestScenes.filter((scene) => scene.quality_status !== "approved");
+    if (incomplete.length) {
+      throw new Error(`장면 ${incomplete.map((scene) => scene.scene_number).join(", ")}번이 아직 준비 중이거나 검수 보류 상태입니다. 다시 누르면 저장된 지점부터 이어집니다.`);
+    }
+    markStep("scenes", "done", `${sceneGenerationMode === "fast" ? "빠른" : sceneGenerationMode === "quality" ? "Dream Y 명장" : "균형"} 장면 검수 완료`);
+    setMessage("장면 준비가 끝났습니다. 승인 대본으로 한국어 음성을 생성합니다.");
+    setActiveStep("voice");
+  }
+
+  async function enqueueBackgroundScenes(id: string) {
+    const data = await jsonRequest<{ jobId?: string; job?: Omit<BackgroundSceneJob, "jobId"> }>(
+      `/api/creative-studio-pro/projects/${id}/scene-job`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sceneGenerationMode }),
+      },
+    );
+    if (!data.job) throw new Error("서버 장면 작업을 시작하지 못했습니다.");
+    const nextJob = { ...data.job, jobId: String(data.jobId || "") };
+    notifiedSceneJobRef.current = "";
+    setBackgroundSceneJob(nextJob);
+    markStep("scenes", "running", "서버 백그라운드 제작 중");
+    setMessage("Dream Y가 서버에서 장면을 계속 제작합니다. 이제 화면을 닫아도 안전합니다.");
+    return nextJob;
+  }
+
+  async function prepareScenes() {
+    if (!projectId || busy) {
+      if (!projectId) setError("먼저 영상 프로젝트를 만들어주세요.");
+      return;
+    }
+    setBusy("scenes");
+    setError("");
+    try {
+      await enqueueBackgroundScenes(projectId);
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "장면 준비 실패";
+      setError(reason);
+      markStep("scenes", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function generateVoiceCore(id: string, segmentOverride?: VoiceSegment[]) {
+    markStep("voice", "running");
+    setMessage("문장별 한국어 음성을 만들고 음악·효과음 타임라인을 저장하고 있습니다.");
+    const segments = segmentOverride?.length ? segmentOverride : effectiveVoiceSegments();
+    if (!segments.length) throw new Error("대본 문장을 먼저 준비해주세요.");
+    await saveAudioTimelineCore(id, segments);
+    const data = await jsonRequest<{ success?: boolean; voiceSegments?: VoiceSegment[] }>(
+      `/api/creative-studio-pro/projects/${id}/voice`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voice: voicePreset, segments }),
+      },
+    );
+    if (Array.isArray(data.voiceSegments)) setVoiceSegments(data.voiceSegments);
+    markStep("voice", "done", `문장 음성 ${data.voiceSegments?.length || segments.length}개 · 음악 ${musicTrack.url ? "직접 음원" : musicMood} · 효과음 ${sfxCues.length}개`);
+    setMessage("오디오 타임라인이 준비됐습니다. 이제 미리캔버스용 썸네일 패키지와 글씨체를 확정하세요.");
+    setActiveStep("thumbnail");
+  }
+
+  async function generateVoice() {
+    if (!projectId || busy) {
+      if (!projectId) setError("먼저 영상 프로젝트를 만들어주세요.");
+      return;
+    }
+    setBusy("voice");
+    setError("");
+    try {
+      await generateVoiceCore(projectId);
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "음성 생성 실패";
+      setError(reason);
+      markStep("voice", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function pollProject(id: string): Promise<ProjectResponse> {
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      const data = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${id}`, { cache: "no-store" });
+      if (data.project) {
+        setProjectDetail(data.project);
+        if (data.project.settings?.learningEngine) setLearningData(hydrateLearningData(data.project.settings.learningEngine));
+      }
+      if (Array.isArray(data.scenes)) setProjectScenes(data.scenes);
+      if (data.project?.final_video_url) return data;
+      if (data.renderJob?.status === "failed") {
+        throw new Error(data.renderJob.error_message || "최종 영상 합성에 실패했습니다.");
+      }
+      setMessage(data.renderJob?.status === "rendering"
+        ? "영상 Worker가 음성·자막·장면·음악을 최종 MP4로 합성하고 있습니다."
+        : "영상 합성 대기열을 확인하고 있습니다.");
+      await sleep(attempt === 0 ? 1200 : 4000);
+    }
+    throw new Error("영상 합성이 오래 걸리고 있습니다. 프로젝트 이력에서 상태를 확인해주세요.");
+  }
+
+  async function renderCore(id: string, sceneCount: number) {
+    markStep("render", "running");
+    setMessage("Runway 장면 영상을 만들고 있습니다. 사용량이 발생할 수 있습니다.");
+
+    await jsonRequest(`/api/creative-studio-pro/projects/${id}/approve-render`, { method: "POST" });
+
+    const usesGeminiOwnedCuts = mediaAssets.some((asset) => asset.status === "completed" && asset.analysis?.recommendedCuts.length);
+    if (usesGeminiOwnedCuts) {
+      setMessage("Gemini가 선별한 내 영상 원본 컷을 사용해 Runway 비용 없이 최종 합성을 준비합니다.");
+    } else {
+      for (let index = 0; index < sceneCount + 2; index += 1) {
+        const result = await jsonRequest<{ done?: boolean; message?: string }>(
+          `/api/creative-studio-pro/projects/${id}/generate-next`,
+          { method: "POST" },
+        );
+        setMessage(result.message || `Runway 장면 ${Math.min(index + 1, sceneCount)}개를 생성하고 있습니다.`);
+        if (result.done) break;
+      }
+    }
+
+    setMessage("음성·자막·선별 장면·음악을 최종 세로 MP4로 합성합니다.");
+    await jsonRequest(`/api/creative-studio-pro/projects/${id}/render`, { method: "POST" });
+    const completed = await pollProject(id);
+    const videoUrl = completed.project?.final_video_url || "";
+    if (!videoUrl) throw new Error("최종 MP4 주소를 받지 못했습니다.");
+
+    setFinalVideoUrl(videoUrl);
+    setProjectDetail(completed.project || projectDetail);
+    setProjectScenes(Array.isArray(completed.scenes) ? completed.scenes : projectScenes);
+    markStep("render", "done", "9:16 최종 MP4 완성");
+    markStep("publish", "waiting", "대표 최종 승인 필요");
+    setMessage("쇼핑 쇼츠가 완성됐습니다. 영상을 확인한 뒤 YouTube 비공개 게시를 승인하세요.");
+    setActiveStep("publish");
+  }
+
+  async function renderVideo() {
+    if (!projectId || busy) {
+      if (!projectId) setError("먼저 영상 프로젝트를 만들어주세요.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Runway와 음성·이미지 생성 사용량이 발생할 수 있습니다. 최종 영상 제작을 시작할까요?",
+    );
+    if (!confirmed) return;
+
+    setBusy("render");
+    setError("");
+    try {
+      await renderCore(projectId, Math.max(1, projectScenes.length || Math.ceil(duration / 5)));
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "최종 영상 제작 실패";
+      setError(reason);
+      markStep("render", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function queuePrivateYouTube() {
+    if (!projectId || !finalVideoUrl || busy || publishQueued) return;
+    const confirmed = window.confirm("완성 영상을 YouTube 비공개 게시 대기열에 등록할까요?");
+    if (!confirmed) return;
+
+    setBusy("publish");
+    setError("");
+    markStep("publish", "running");
+    try {
+      const latest = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${projectId}`, { cache: "no-store" });
+      const project = latest.project || projectDetail;
+      const scenes = Array.isArray(latest.scenes) ? latest.scenes : projectScenes;
+      const commerce = project?.settings?.commercePackage;
+      const youtube = commerce?.platformVersions?.youtube;
+
+      if (!project || !commerce || !youtube) {
+        throw new Error("게시용 제목·설명 패키지를 찾지 못했습니다.");
+      }
+
+      const hashtags = Array.isArray(youtube.hashtags) ? youtube.hashtags : [];
+      await jsonRequest("/api/publishing/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channels: ["youtube"],
+          title: youtube.title || commerce.title || project.title,
+          content: `${youtube.description || commerce.description || project.product_description || ""}
+
+${commerce.disclosure || "이 콘텐츠는 제휴 활동의 일환으로 일정액의 수수료를 제공받을 수 있습니다."}
+${commerce.cta || "상품 링크에서 자세히 확인하세요."}`.trim(),
+          scheduledAt: new Date().toISOString(),
+          payload: {
+            videoUrl: finalVideoUrl,
+            thumbnailUrl: scenes.find((scene) => scene.selected_image_url)?.selected_image_url || "",
+            tags: hashtags.map((tag) => String(tag).replace(/^#/, "")),
+            privacyStatus: "private",
+            sourceProjectId: projectId,
+            gyProductCode: commerce.productCode || `GY-${Date.now()}`,
+          },
+        }),
+      });
+
+      setPublishQueued(true);
+      setLearningData((current) => hydrateLearningData({ ...current, sourceChannel: "youtube", publishedAt: new Date().toISOString(), lastUpdatedAt: new Date().toISOString() }));
+      markStep("publish", "done", "YouTube 비공개 대기열 등록");
+      setMessage("비공개 게시 대기열에 등록했습니다. 게시센터에서 최종 실행할 수 있습니다.");
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "비공개 게시 등록 실패";
+      setError(reason);
+      markStep("publish", "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function runAutomatic(options?: { skipConfirm?: boolean }) {
+    if (busy) return;
+    if (!productName.trim()) {
+      setError("제휴링크에서 상품을 불러오거나 상품명을 먼저 입력해주세요.");
+      setActiveStep("product");
+      return;
+    }
+
+    const confirmed = options?.skipConfirm || window.confirm(
+      `${productName}
+
+대본·이미지·Gemini 내 영상 선별·음성·최종 MP4까지 자동 제작할까요?
+AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인이 필요합니다.`,
+    );
+    if (!confirmed) return;
+
+    setBusy("auto");
+    setError("");
+    setMessage("완전자동 제작을 시작합니다.");
+
+    try {
+      const result = factoryResult || await generateStrategyCore();
+      const references = referenceImageUrls.length ? referenceImageUrls : await uploadReferencesCore();
+      const created = projectId
+        ? { id: projectId, sceneCount: Math.max(1, projectScenes.length || Math.ceil(duration / 5)) }
+        : await createProjectCore(result, references);
+      if (initialDraft) {
+        await jsonRequest(`/api/shopping-shorts/runs/${initialDraft.runId}/variants/${initialDraft.variantId}/production`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ videoProjectId: created.id, status: "producing" }),
+        });
+      }
+
+      if (videoFile && mediaRightsConfirmed) await analyzeOwnedVideoCore(created.id, videoFile);
+      else { markStep("analysis", "done", "내 영상 없음 · AI 장면 제작"); }
+      await prepareScenesCore(created.id, created.sceneCount);
+      const automaticSegments = voiceSegments.length ? voiceSegments : makeVoiceSegments(result);
+      await generateVoiceCore(created.id, automaticSegments);
+      regenerateThumbnailVariants();
+      await saveThumbnailPackage();
+      await renderCore(created.id, created.sceneCount);
+      if (initialDraft) {
+        const completed = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${created.id}`, { cache: "no-store" });
+        await jsonRequest(`/api/shopping-shorts/runs/${initialDraft.runId}/variants/${initialDraft.variantId}/production`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            videoProjectId: created.id,
+            status: completed.project?.final_video_url ? "rendered" : "producing",
+            finalVideoUrl: completed.project?.final_video_url || "",
+          }),
+        });
+      }
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "완전자동 제작이 중단됐습니다.";
+      setError(reason);
+      setMessage("완료된 단계는 저장돼 있습니다. 오류가 난 단계부터 다시 실행할 수 있습니다.");
+      const running = steps.find((step) => step.state === "running");
+      if (running) markStep(running.key, "error", reason);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  useEffect(() => {
+    if (!initialAutoStart || !initialDraft) return;
+    const timer = window.setTimeout(() => {
+      if (busy) return;
+      void runAutomatic({ skipConfirm: true });
+    }, 700);
+    return () => window.clearTimeout(timer);
+    // The draft is immutable for a mounted production page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAutoStart, initialDraft]);
+
+  function downloadProductionPackage() {
+    if (!factoryResult) {
+      setError("먼저 키워드·대본을 생성해주세요.");
+      return;
+    }
+
+    const content = [
+      `# ${factoryResult.shorts.title}`,
+      "",
+      "## 상품",
+      `- 상품명: ${productName}`,
+      `- 가격: ${priceText || "확인 필요"}`,
+      `- 플랫폼: ${platform || "직접 입력"}`,
+      `- 제휴링크: ${affiliateUrl}`,
+      "",
+      "## 훅",
+      factoryResult.shorts.hook,
+      "",
+      "## 승인 대본",
+      draftVoiceover || factoryResult.shorts.voiceover,
+      "",
+      "## 장면표",
+      ...factoryResult.shorts.scenes.map((scene, index) =>
+        `${index + 1}. ${scene.start}~${scene.end}초 | ${scene.visual} | ${scene.subtitle}`),
+      "",
+      "## 썸네일",
+      ...factoryResult.creative.thumbnailCopy.map((copy) => `- ${copy}`),
+      "",
+      "## 게시 설명",
+      factoryResult.shorts.description,
+      "",
+      "## 고정댓글",
+      factoryResult.shorts.pinnedComment,
+    ].join("\n");
+
+    downloadText(`${safeFileName(productName)}-제작패키지.md`, content, "text/markdown");
+    downloadText(`${safeFileName(productName)}.srt`, factoryResult.subtitles.srt);
+    setMessage("대본·장면표·SRT 제작 패키지를 다운로드했습니다.");
+  }
+
+  async function loadKoreanTrends() {
+    if (busy) return;
+    setBusy("trends");
+    setError("");
+    try {
+      const data = await jsonRequest<{ trends?: TrendKeyword[] }>("/api/growth-commerce/trends");
+      const loaded = (Array.isArray(data.trends) ? data.trends : [])
+        .filter((item) => item.keyword)
+        .sort((a, b) => b.shopping_fit - a.shopping_fit || b.traffic - a.traffic)
+        .slice(0, 8);
+      setTrendKeywords(loaded);
+      setSelectedTrendKeywords(loaded.slice(0, 3).map((item) => item.keyword));
+      setMessage(`한국 급상승 키워드 ${loaded.length}개를 불러왔고, 쇼핑 적합도가 높은 3개를 우선 선택했습니다.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "한국 급상승 키워드 불러오기 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function updateBackgroundSceneJob(action: "retry" | "cancel" | "read") {
+    if (!projectId || busy) return;
+    setBusy(`scene-${action}`);
+    setError("");
+    try {
+      await jsonRequest(`/api/creative-studio-pro/projects/${projectId}/scene-job`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (action === "retry") {
+        notifiedSceneJobRef.current = "";
+        markStep("scenes", "running", "자동 복구 다시 시작");
+        setMessage("실패한 장면부터 서버에서 다시 제작합니다.");
+      } else if (action === "cancel") {
+        setMessage("백그라운드 장면 제작을 취소했습니다.");
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "장면 작업 변경에 실패했습니다.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function enableCompletionNotifications() {
+    if (typeof Notification === "undefined") {
+      setError("이 브라우저는 완료 알림을 지원하지 않습니다.");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    setMessage(permission === "granted"
+      ? "완료 알림을 켰습니다. 다른 화면에 있어도 알려드립니다."
+      : "브라우저 알림이 꺼져 있어 사이트 안에서 완료 상태를 표시합니다.");
+  }
+
+  async function downloadCapCutPackage() {
+    if (!projectId || busy) {
+      setError("먼저 제작 프로젝트를 생성해주세요.");
+      return;
+    }
+    setBusy("capcut");
+    setError("");
+    try {
+      const response = await fetch("/api/growth-commerce/capcut-package", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { message?: string };
+        throw new Error(data.message || "CapCut 패키지를 만들지 못했습니다.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${safeFileName(productName || "gy-nexus-shorts")}-capcut.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setMessage("CapCut 가져오기 패키지를 다운로드했습니다. ZIP의 00-START-HERE 안내에 따라 마무리하세요.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "CapCut 패키지 생성 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const advisorText = useMemo(() => {
+    if (error) return "오류가 난 단계만 다시 실행하세요. 이전에 완료된 단계와 프로젝트 데이터는 유지됩니다.";
+    if (!nextWaitingStep) return "제작과 비공개 게시 준비가 끝났습니다. 성과 데이터가 쌓이면 다음 쇼츠의 훅·길이·썸네일을 개선합니다.";
+    const advice: Record<StepKey, string> = {
+      product: "제휴링크를 붙여넣고 상품 불러오기를 먼저 실행하세요. 상품명·이미지·가격이 부족하면 직접 보완할 수 있습니다.",
+      strategy: "첫 2초 훅과 대본을 만든 뒤 대표님 말투에 맞게 수정하세요. 수정한 대본은 프로젝트 제작 지시문에 들어갑니다.",
+      assets: "상품 사진은 최대 6장입니다. 정면·좌우 측면·후면·상단·하단처럼 서로 다른 각도를 채우면 형태 검수 정확도가 올라갑니다.",
+      project: "한국형 직접 제작 또는 사진 한 장 AI 쇼츠 방식을 선택하고 프로젝트를 생성하세요. 중국 소스는 별도 현지화 메뉴에서 진행합니다.",
+      analysis: "직접 촬영하거나 사용 권한이 있는 영상을 올리면 Gemini가 첫 2초 훅·사용·디테일·CTA 구간을 자동 선별합니다.",
+      scenes: "AI가 상품 장면을 만들고 85점 기준으로 자동 검수합니다. 불량 장면만 다시 생성할 수 있는 기반입니다.",
+      voice: "문장별 목소리·속도·연기를 수정하고, YouTube 오디오 라이브러리 음악과 효과음을 타임라인에 배치하세요.",
+      thumbnail: "미리캔버스에서 실제 지원하는 인기 한글 글씨체 중 하나를 선택하고, 세로 커버·가로 썸네일 시안을 저장하세요.",
+      render: "Runway 사용량이 발생할 수 있습니다. 장면·음성·썸네일 패키지를 확인한 뒤 최종 MP4 제작을 승인하세요.",
+      publish: "완성 영상을 확인한 뒤 YouTube 비공개 대기열에만 등록합니다. 공개 전 대표님 최종 승인을 유지합니다.",
+    };
+    return advice[nextWaitingStep.key];
+  }, [error, nextWaitingStep]);
+
+  function renderStepContent() {
+    if (activeStep === "product") {
+      return (
+        <section className={styles.stageCard}>
+          <div className={styles.stageHeading}>
+            <div><span>STEP 01</span><h2>상품·제휴링크</h2></div>
+            <strong>{priceText || "가격 미확인"}</strong>
+          </div>
+          <div className={styles.formGrid}>
+            <label className={styles.wide}>제휴링크
+              <div className={styles.inlineField}>
+                <input value={affiliateUrl} onChange={(event: ChangeEvent<HTMLInputElement>) => setAffiliateUrl(event.target.value)} placeholder="https:// 제휴링크를 붙여넣으세요" />
+                <button type="button" onClick={() => void importAffiliateProduct()} disabled={Boolean(busy)}>
+                  {busy === "product" ? "불러오는 중" : "상품 불러오기"}
+                </button>
+              </div>
+            </label>
+            <label>상품명<input value={productName} onChange={(event: ChangeEvent<HTMLInputElement>) => setProductName(event.target.value)} /></label>
+            <label>판매 플랫폼<input value={platform} onChange={(event: ChangeEvent<HTMLInputElement>) => setPlatform(event.target.value)} placeholder="쿠팡·Temu 등" /></label>
+            <label className={styles.wide}>확인된 상품 설명
+              <textarea rows={5} value={description} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setDescription(event.target.value)} placeholder="판매 페이지, 제품 포장 또는 제조사 자료에서 직접 확인한 기능·구성·규격만 입력하세요." />
+              <small className={styles.helper}>AI는 이 내용만 광고 사실로 사용합니다. 후기·추측·확인되지 않은 효능은 입력하지 마세요.</small>
+            </label>
+            <label className={styles.wide}>상품 이미지 주소<input value={productImageUrl} onChange={(event: ChangeEvent<HTMLInputElement>) => setProductImageUrl(event.target.value)} placeholder="https://" /></label>
+          </div>
+          <button className={styles.primary} type="button" onClick={() => { markStep("product", "done", productName || "상품정보 직접 입력"); moveTo("strategy"); }} disabled={!productName.trim() || INVALID_PRODUCT_NAME.test(productName.trim()) || description.trim().length < 5}>
+            상품정보 확정
+          </button>
+        </section>
+      );
+    }
+
+    if (activeStep === "strategy") {
+      return (
+        <section className={styles.stageCard}>
+          <div className={styles.stageHeading}>
+            <div><span>STEP 02</span><h2>키워드·훅·대본</h2></div>
+            <button type="button" className={styles.subtle} onClick={downloadProductionPackage}>SRT·패키지 저장</button>
+          </div>
+          <div className={styles.formGrid}>
+            <label>길이<select value={duration} onChange={(event: ChangeEvent<HTMLSelectElement>) => setDuration(Number(event.target.value) as 15 | 20 | 25 | 30)}>
+              {[15, 20, 25, 30].map((value) => <option key={value} value={value}>{value}초</option>)}
+            </select></label>
+            <label>톤<select value={tone} onChange={(event: ChangeEvent<HTMLSelectElement>) => setTone(event.target.value)}>
+              <option>친근하고 재미있는 생활 밀착형</option>
+              <option>빠르고 강한 쇼핑 전환형</option>
+              <option>신뢰감 있고 자연스러운 전문가형</option>
+              <option>감성적인 프리미엄 스토리형</option>
+            </select></label>
+          </div>
+          <div className={styles.audioSection}>
+            <div className={styles.audioSectionHead}>
+              <div><span>LIVE KEYWORDS</span><h3>한국 급상승 키워드</h3></div>
+              <button type="button" className={styles.subtle} onClick={() => void loadKoreanTrends()} disabled={Boolean(busy)}>
+                {busy === "trends" ? "불러오는 중..." : "인기 키워드 자동 불러오기"}
+              </button>
+            </div>
+            <p className={styles.helper}>Google Trends 한국 급상승 검색어를 가져와 쇼핑 적합도를 계산합니다. 선택 키워드는 상품과 관련 있을 때만 대본에 반영됩니다.</p>
+            {trendKeywords.length > 0 && (
+              <div className={styles.assetShelf}>
+                {trendKeywords.map((item) => {
+                  const selected = selectedTrendKeywords.includes(item.keyword);
+                  return (
+                    <button
+                      type="button"
+                      key={`${item.keyword}-${item.rank}`}
+                      onClick={() => setSelectedTrendKeywords((current) => selected ? current.filter((keyword) => keyword !== item.keyword) : [...current, item.keyword].slice(0, 5))}
+                    >
+                      {selected ? "✓ " : ""}{item.keyword} · 적합 {item.shopping_fit}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <button className={styles.primary} type="button" onClick={() => void generateStrategy()} disabled={Boolean(busy)}>
+            {busy === "strategy" ? "Dream Y가 제작 중..." : "키워드·대본·장면표 생성"}
+          </button>
+          {factoryResult && (
+            <div className={styles.resultStack}>
+              <article><span>제목</span><strong>{factoryResult.shorts.title}</strong></article>
+              <article><span>첫 2초 훅</span><strong>{factoryResult.shorts.hook}</strong></article>
+              <label>대표님 승인 대본
+                <textarea rows={8} value={draftVoiceover} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setDraftVoiceover(event.target.value)} />
+              </label>
+              <div className={styles.sceneList}>
+                {factoryResult.shorts.scenes.map((scene, index) => (
+                  <div key={`${scene.start}-${index}`}>
+                    <b>{scene.start}~{scene.end}초</b>
+                    <p>{scene.visual}</p>
+                    <em>{scene.subtitle}</em>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      );
+    }
+
+    if (activeStep === "assets") {
+      return (
+        <section className={styles.stageCard}>
+          <div className={styles.stageHeading}><div><span>STEP 03</span><h2>상품 사진 소재</h2></div><strong>{referenceImageUrls.length}장 연결</strong></div>
+          <label className={styles.uploadBox}>
+            <input type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={(event: ChangeEvent<HTMLInputElement>) => setImageFiles(Array.from(event.target.files || []).slice(0, 6))} />
+            <span>PNG·JPG·WEBP 상품 사진 1~6장 선택</span>
+            <small>정면·좌우·후면·상단·하단처럼 서로 다른 각도의 실제 상품 사진을 권장합니다.</small>
+          </label>
+          {imageFiles.length > 0 && <div className={styles.fileChips}>{imageFiles.map((file) => <span key={`${file.name}-${file.size}`}>{file.name}</span>)}</div>}
+          {productImageUrl && <p className={styles.helper}>제휴 상품 이미지 주소도 함께 사용할 수 있습니다.</p>}
+          <button className={styles.primary} type="button" onClick={() => void uploadReferences()} disabled={Boolean(busy)}>
+            {busy === "assets" ? "소재 연결 중..." : "상품 사진 저장·연결"}
+          </button>
+        </section>
+      );
+    }
+
+    if (activeStep === "project") {
+      return (
+        <section className={styles.stageCard}>
+          <div className={styles.stageHeading}><div><span>STEP 04</span><h2>제작 방식과 프로젝트</h2></div><strong>{projectId ? "저장됨" : "미생성"}</strong></div>
+          <p className={styles.helper}>한국형 쇼츠는 중국 키워드·플랫폼 패키지를 생략하는 빠른 생성 경로를 사용합니다. 광고 품질검수와 상품 사진 검수는 그대로 유지됩니다.</p>
+          <div className={`${styles.choiceGrid} ${styles.twoChoiceGrid}`}>
+            <button type="button" className={sourceStrategy === "korean-original" ? styles.selectedChoice : ""} onClick={() => setSourceStrategy("korean-original")}>
+              <b>한국형 직접 제작</b><span>내 상품 사진과 한국형 대본 중심</span>
+            </button>
+            <button type="button" className={sourceStrategy === "single-photo" ? styles.selectedChoice : ""} onClick={() => setSourceStrategy("single-photo")}>
+              <b>사진 한 장 AI 쇼츠</b><span>상품 이미지 한 장으로 새 장면 생성</span>
+            </button>
+          </div>
+          <div>
+            <b className={styles.fieldTitle}>장면 제작 속도</b>
+            <div className={styles.speedModeGrid}>
+              <button type="button" className={sceneGenerationMode === "fast" ? styles.selectedChoice : ""} onClick={() => setSceneGenerationMode("fast")}>
+                <b>빠르게</b><span>후보 1장 · 빠른 검수 · 생성 1회</span>
+              </button>
+              <button type="button" className={sceneGenerationMode === "balanced" ? styles.selectedChoice : ""} onClick={() => setSceneGenerationMode("balanced")}>
+                <b>균형</b><span>후보 2장 · 실패 시 1회 자동 재생성</span>
+              </button>
+              <button type="button" className={sceneGenerationMode === "quality" ? styles.selectedChoice : ""} onClick={() => setSceneGenerationMode("quality")}>
+                <b>Dream Y 명장 · 추천</b><span>후보 3장 병렬 초안 · 순차 고해상도 마감</span>
+              </button>
+            </div>
+          </div>
+          <div className={styles.formGrid}>
+            <label>영상 스타일<select value={style} onChange={(event: ChangeEvent<HTMLSelectElement>) => setStyle(event.target.value as typeof style)}>
+              <option value="problem-solution">문제 해결형</option>
+              <option value="ugc-review">UGC 리뷰형</option>
+              <option value="how-to">사용법형</option>
+              <option value="cinematic-product">시네마틱 제품형</option>
+            </select></label>
+            <label>영상 배속<select value={playbackSpeed} onChange={(event: ChangeEvent<HTMLSelectElement>) => setPlaybackSpeed(Number(event.target.value) as 1 | 1.2 | 1.4)}>
+              <option value={1}>1.0x · 자연스럽게</option>
+              <option value={1.2}>1.2x · 빠른 쇼츠</option>
+              <option value={1.4}>1.4x · 매우 빠르게</option>
+            </select><small className={styles.helper}>영상 편집 배속이며 프로젝트 생성 속도와는 별개입니다.</small></label>
+            <label>품질 기준<input value={sceneGenerationMode === "fast" ? "82점 · 빠른 검수" : sceneGenerationMode === "quality" ? "88점 · 명장 병렬 초안 + 연속성 마감" : "85점 · 균형 검수"} readOnly /></label>
+          </div>
+          <button className={styles.primary} type="button" onClick={() => void createProject()} disabled={Boolean(busy)}>
+            {busy === "project" ? "프로젝트 생성 중..." : "영상 프로젝트 생성"}
+          </button>
+          {projectId && <p className={styles.projectCode}>프로젝트 ID: {projectId}</p>}
+        </section>
+      );
+    }
+
+    if (activeStep === "analysis") {
+      const completed = mediaAssets.filter((asset) => asset.status === "completed");
+      return (
+        <section className={styles.stageCard}>
+          <div className={styles.stageHeading}><div><span>STEP 05</span><h2>Gemini 소재 분석·내 영상 자동 선별</h2></div><strong>{completed.length ? `${completed.length}개 분석 완료` : "분석 전"}</strong></div>
+          <p className={styles.helper}>직접 촬영하거나 사용 권한이 있는 영상을 올리면 제품 노출, 흔들림, 동작, 첫 2초 훅을 Gemini가 분석해 사용할 구간만 자동 선택합니다.</p>
+          <label className={styles.uploadBox}>
+            <input type="file" accept="video/mp4,video/webm,video/quicktime" onChange={(event: ChangeEvent<HTMLInputElement>) => setVideoFile(event.target.files?.[0] || null)} />
+            <span>{videoFile ? videoFile.name : "MP4·WEBM·MOV 내 영상 선택"}</span>
+            <small>500MB 이하 · 영상은 Supabase에 직접 업로드되어 Vercel 용량 제한을 피합니다.</small>
+          </label>
+          <label className={styles.rightsConfirm}><input type="checkbox" checked={mediaRightsConfirmed} onChange={(event: ChangeEvent<HTMLInputElement>) => setMediaRightsConfirmed(event.target.checked)} /><span>이 영상은 제가 직접 촬영했거나 최종 쇼츠에 사용할 권한이 있습니다.</span></label>
+          <div className={styles.phaseActions}>
+            <button type="button" className={styles.subtle} onClick={() => { markStep("analysis", "done", "내 영상 없음 · AI 장면 제작"); moveTo("scenes"); }}>내 영상 없이 계속</button>
+            <button type="button" className={styles.primary} onClick={() => void analyzeOwnedVideo()} disabled={Boolean(busy) || !videoFile || !mediaRightsConfirmed || !projectId}>
+              {busy === "analysis" ? "프레임 추출·Gemini 분석 중..." : "내 영상 업로드·자동 선별"}
+            </button>
+          </div>
+          <div className={styles.mediaAnalysisList}>
+            {mediaAssets.map((asset) => (
+              <article className={styles.mediaAnalysisCard} key={asset.id}>
+                <div className={styles.mediaCardHead}>
+                  <div><span>{asset.status.toUpperCase()}</span><h3>{asset.name}</h3></div>
+                  <strong>{asset.durationSeconds ? `${asset.durationSeconds.toFixed(1)}초` : "처리 중"}</strong>
+                </div>
+                <video src={asset.url} controls preload="metadata" />
+                {asset.error && <p className={styles.assetError}>{asset.error}</p>}
+                {asset.analysis && (
+                  <div className={styles.geminiResult}>
+                    <div className={styles.scoreGrid}>
+                      <div><span>상품 일치</span><strong>{asset.analysis.productMatchScore}점</strong></div>
+                      <div><span>화면 품질</span><strong>{asset.analysis.visualQualityScore}점</strong></div>
+                      <div><span>최강 훅</span><strong>{asset.analysis.bestHookTimestamp.toFixed(1)}초</strong></div>
+                    </div>
+                    <p>{asset.analysis.summary}</p>
+                    <div className={styles.cutTimeline}>
+                      {asset.analysis.recommendedCuts.map((cut) => (
+                        <div key={`${asset.id}-${cut.order}`}>
+                          <b>컷 {cut.order}</b>
+                          <label>시작<input type="number" min="0" step="0.1" value={cut.sourceStartSecond} onChange={(event: ChangeEvent<HTMLInputElement>) => updateMediaCut(asset.id, cut.order, { sourceStartSecond: Number(event.target.value) })} /></label>
+                          <label>종료<input type="number" min="0.7" step="0.1" value={cut.sourceEndSecond} onChange={(event: ChangeEvent<HTMLInputElement>) => updateMediaCut(asset.id, cut.order, { sourceEndSecond: Number(event.target.value) })} /></label>
+                          <label>역할<input value={cut.role} onChange={(event: ChangeEvent<HTMLInputElement>) => updateMediaCut(asset.id, cut.order, { role: event.target.value })} /></label>
+                          <label>자막<input value={cut.subtitleSuggestion} onChange={(event: ChangeEvent<HTMLInputElement>) => updateMediaCut(asset.id, cut.order, { subtitleSuggestion: event.target.value })} /></label>
+                          <span>{cut.score}점 · {cut.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {asset.analysis.warnings.length > 0 && <div className={styles.warningList}>{asset.analysis.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
+                    <button type="button" className={styles.primary} onClick={() => void saveGeminiCuts(asset)} disabled={Boolean(busy)}>수정한 추천 컷을 최종 타임라인에 저장</button>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (activeStep === "scenes") {
+      return (
+        <section className={styles.stageCard}>
+          <div className={styles.stageHeading}><div><span>STEP 06</span><h2>선별 컷·AI 장면</h2></div><strong>{projectScenes.length}개 장면</strong></div>
+          <div className={styles.sceneList}>
+            {projectScenes.length ? projectScenes.map((scene, index) => (
+              <div key={scene.id || index}>
+                <b>장면 {scene.scene_number || index + 1}</b>
+                <p>{scene.narration || scene.role || "장면 기획 준비"}</p>
+                <em>{scene.quality_status || scene.status || "대기"}</em>
+              </div>
+            )) : <p className={styles.helper}>프로젝트를 만든 뒤 AI 장면 준비를 실행하세요.</p>}
+          </div>
+          {backgroundSceneJob && (
+            <div className={`${styles.backgroundJob} ${styles[backgroundSceneJob.status] || ""}`}>
+              <div className={styles.backgroundJobTop}>
+                <div>
+                  <b>
+                    {backgroundSceneJob.status === "completed" ? "명장 제작 완료"
+                      : backgroundSceneJob.status === "failed" ? "자동 복구 확인 필요"
+                        : backgroundSceneJob.status === "cancelled" ? "제작 취소됨"
+                          : "서버 백그라운드 제작 중"}
+                  </b>
+                  <span>{backgroundSceneJob.approvedScenes}/{backgroundSceneJob.totalScenes || projectScenes.length || 0}개 장면</span>
+                </div>
+                <strong>{backgroundSceneJob.progress}%</strong>
+              </div>
+              <div className={styles.backgroundProgress} aria-label={`장면 제작 ${backgroundSceneJob.progress}%`}>
+                <i style={{ width: `${backgroundSceneJob.progress}%` }} />
+              </div>
+              <p>{backgroundSceneJob.message}</p>
+              {backgroundSceneJob.attempts > 0 && backgroundSceneJob.status !== "completed" && (
+                <small>자동 복구 {backgroundSceneJob.attempts}/{backgroundSceneJob.maxAttempts}회</small>
+              )}
+              <div className={styles.backgroundActions}>
+                {notificationPermission !== "granted" && (
+                  <button type="button" className={styles.subtle} onClick={() => void enableCompletionNotifications()}>
+                    완료 알림 켜기
+                  </button>
+                )}
+                {["queued", "processing", "retry"].includes(backgroundSceneJob.status) && (
+                  <button type="button" className={styles.subtle} onClick={() => void updateBackgroundSceneJob("cancel")} disabled={Boolean(busy)}>
+                    제작 취소
+                  </button>
+                )}
+                {backgroundSceneJob.status === "failed" && (
+                  <button type="button" className={styles.subtle} onClick={() => void updateBackgroundSceneJob("retry")} disabled={Boolean(busy)}>
+                    실패 지점부터 다시 시작
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          <button className={styles.primary} type="button" onClick={() => void prepareScenes()} disabled={Boolean(busy) || !projectId || Boolean(backgroundSceneJob && ["queued", "processing", "retry"].includes(backgroundSceneJob.status))}>
+            {busy === "scenes" ? "서버 대기열 등록 중..." : "백그라운드 Dream Y 명장 제작 시작"}
+          </button>
+        </section>
+      );
+    }
+
+    if (activeStep === "voice") {
+      const musicAssets = audioAssets.filter((asset) => asset.kind === "music");
+      const sfxAssets = audioAssets.filter((asset) => asset.kind === "sfx");
+      return (
+        <section className={styles.stageCard}>
+          <div className={styles.stageHeading}>
+            <div><span>STEP 07 · PHASE 3</span><h2>음성·음악·효과음 타임라인</h2></div>
+            <strong>{voiceSegments.filter((segment) => segment.audioUrl).length}/{voiceSegments.length} 문장 음성</strong>
+          </div>
+
+          <div className={styles.audioSummary}>
+            <label>기본 한국어 음성<select value={voicePreset} onChange={(event: ChangeEvent<HTMLSelectElement>) => setVoicePreset(event.target.value as VoicePreset)}>
+              <option value="marin">Marin · 자연스러운 여성</option>
+              <option value="coral">Coral · 밝고 친근한 여성</option>
+              <option value="shimmer">Shimmer · 부드러운 여성</option>
+              <option value="cedar">Cedar · 신뢰형 남성</option>
+              <option value="onyx">Onyx · 낮고 강한 남성</option>
+              <option value="echo">Echo · 차분한 남성</option>
+            </select></label>
+            <label>음성 전체 볼륨 <b>{Math.round(voiceMasterVolume * 100)}%</b>
+              <input type="range" min="0" max="1.5" step="0.05" value={voiceMasterVolume} onChange={(event: ChangeEvent<HTMLInputElement>) => setVoiceMasterVolume(Number(event.target.value))} />
+            </label>
+            <label>기본 음악 분위기<select value={musicMood} onChange={(event: ChangeEvent<HTMLSelectElement>) => setMusicMood(event.target.value)}>
+              <option value="bright-commerce">밝고 빠른 쇼핑형</option>
+              <option value="summer-fresh">여름·시원함</option>
+              <option value="warm-lifestyle">따뜻한 생활형</option>
+              <option value="premium-clean">프리미엄·깔끔함</option>
+              <option value="modern-corporate">현대적 정보형</option>
+              <option value="none">음악 없음</option>
+            </select></label>
+          </div>
+
+          <div className={styles.audioSection}>
+            <div className={styles.audioSectionHead}>
+              <div><span>VOICE LAYER</span><h3>문장별 음성 수정</h3></div>
+              <button type="button" className={styles.subtle} onClick={() => setVoiceSegments((current) => current.map((segment) => ({ ...segment, voice: voicePreset, audioUrl: "" })))}>기본 음성 전체 적용</button>
+            </div>
+            {!voiceSegments.length && <p className={styles.helper}>STEP 02에서 대본을 생성하면 장면 시간에 맞는 문장별 음성 레이어가 만들어집니다.</p>}
+            <div className={styles.voiceTimeline}>
+              {voiceSegments.map((segment, index) => (
+                <article className={styles.voiceRow} key={segment.id}>
+                  <div className={styles.timeBadge}>{segment.startSecond.toFixed(1)}~{segment.endSecond.toFixed(1)}초</div>
+                  <div className={styles.voiceText}>
+                    <label>문장 {index + 1}<textarea rows={3} value={segment.text} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => updateVoiceSegment(segment.id, { text: event.target.value })} /></label>
+                    <div className={styles.voiceControls}>
+                      <label>목소리<select value={segment.voice} onChange={(event: ChangeEvent<HTMLSelectElement>) => updateVoiceSegment(segment.id, { voice: event.target.value as VoicePreset })}>
+                        <option value="marin">Marin 여성</option><option value="coral">Coral 여성</option><option value="shimmer">Shimmer 여성</option><option value="cedar">Cedar 남성</option><option value="onyx">Onyx 남성</option><option value="echo">Echo 남성</option>
+                      </select></label>
+                      <label>연기<select value={segment.delivery} onChange={(event: ChangeEvent<HTMLSelectElement>) => updateVoiceSegment(segment.id, { delivery: event.target.value })}>
+                        <option>빠르고 시선을 끌게</option><option>자연스럽고 또렷하게</option><option>신뢰감 있고 차분하게</option><option>놀란 듯 생동감 있게</option><option>부담 없이 행동을 유도하게</option>
+                      </select></label>
+                      <label>속도 {segment.speed.toFixed(2)}x<input type="range" min="0.75" max="1.35" step="0.05" value={segment.speed} onChange={(event: ChangeEvent<HTMLInputElement>) => updateVoiceSegment(segment.id, { speed: Number(event.target.value) })} /></label>
+                      <label>볼륨 {Math.round(segment.volume * 100)}%<input type="range" min="0" max="1.5" step="0.05" value={segment.volume} onChange={(event: ChangeEvent<HTMLInputElement>) => updateVoiceSegment(segment.id, { volume: Number(event.target.value) })} /></label>
+                    </div>
+                  </div>
+                  <div className={styles.voiceActions}>
+                    {segment.audioUrl ? <audio controls preload="none" src={segment.audioUrl} /> : <span>아직 생성 전</span>}
+                    <button type="button" onClick={() => void regenerateVoiceSegment(segment.id)} disabled={Boolean(busy) || !projectId}>{busy === `voice-${segment.id}` ? "생성 중" : "이 문장만 다시 생성"}</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.audioColumns}>
+            <div className={styles.audioSection}>
+              <div className={styles.audioSectionHead}><div><span>MUSIC LAYER</span><h3>배경음악</h3></div></div>
+              <label className={styles.uploadBox}>
+                <input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a" onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicFiles(Array.from(event.target.files || []).slice(0, 1))} />
+                <span>YouTube 오디오 라이브러리 MP3·WAV·M4A 선택</span>
+                <small>상업 이용과 저작자 표시 조건을 확인한 파일을 사용하세요.</small>
+              </label>
+              <button type="button" className={styles.subtle} onClick={() => void uploadMusic()} disabled={Boolean(busy) || !projectId || !musicFiles.length}>{busy === "music-upload" ? "업로드 중" : "배경음악 업로드"}</button>
+              {musicAssets.length > 0 && <label>저장된 음악<select value={musicTrack.assetId} onChange={(event: ChangeEvent<HTMLSelectElement>) => { const asset = musicAssets.find((item) => item.id === event.target.value); if (asset) setMusicTrack((current) => ({ ...current, assetId: asset.id, name: asset.name, url: asset.url })); }}><option value="">선택</option>{musicAssets.map((asset) => <option value={asset.id} key={asset.id}>{asset.name}</option>)}</select></label>}
+              {musicTrack.url && <audio controls preload="none" src={musicTrack.url} />}
+              <div className={styles.compactGrid}>
+                <label>음악 볼륨 {Math.round(musicTrack.volume * 100)}%<input type="range" min="0" max="0.8" step="0.02" value={musicTrack.volume} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, volume: Number(event.target.value) }))} /></label>
+                <label>시작 초<input type="number" min="0" max={duration} step="0.1" value={musicTrack.startSecond} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, startSecond: Number(event.target.value) }))} /></label>
+                <label>페이드 인<input type="number" min="0" max="10" step="0.1" value={musicTrack.fadeIn} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, fadeIn: Number(event.target.value) }))} /></label>
+                <label>페이드 아웃<input type="number" min="0" max="10" step="0.1" value={musicTrack.fadeOut} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, fadeOut: Number(event.target.value) }))} /></label>
+              </div>
+              <label className={styles.checkLine}><input type="checkbox" checked={musicTrack.autoDuck} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, autoDuck: event.target.checked }))} /> 음성이 나올 때 음악 자동 감쇄</label>
+              <label className={styles.checkLine}><input type="checkbox" checked={musicTrack.loop} onChange={(event: ChangeEvent<HTMLInputElement>) => setMusicTrack((current) => ({ ...current, loop: event.target.checked }))} /> 영상 길이까지 음악 반복</label>
+              <label>음원 출처·저작자 표시<textarea rows={2} value={musicTrack.licenseNote} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setMusicTrack((current) => ({ ...current, licenseNote: event.target.value }))} placeholder="예: YouTube 오디오 라이브러리 / 저작자 표시 불필요" /></label>
+            </div>
+
+            <div className={styles.audioSection}>
+              <div className={styles.audioSectionHead}><div><span>SFX LAYER</span><h3>효과음</h3></div><strong>{sfxCues.length}개 배치</strong></div>
+              <label className={styles.uploadBox}>
+                <input type="file" multiple accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a" onChange={(event: ChangeEvent<HTMLInputElement>) => setSfxFiles(Array.from(event.target.files || []).slice(0, 8))} />
+                <span>Whoosh·Pop·Click 등 효과음 선택</span>
+                <small>한 번 업로드한 효과음은 여러 시점에 다시 배치할 수 있습니다.</small>
+              </label>
+              <button type="button" className={styles.subtle} onClick={() => void uploadSfx()} disabled={Boolean(busy) || !projectId || !sfxFiles.length}>{busy === "sfx-upload" ? "업로드 중" : "효과음 소재 업로드"}</button>
+              <div className={styles.assetShelf}>{sfxAssets.map((asset) => <button type="button" key={asset.id} onClick={() => addSfxCue(asset)}>+ {asset.name}</button>)}</div>
+              <div className={styles.sfxTimeline}>
+                {sfxCues.map((cue) => (
+                  <article key={cue.id}>
+                    <strong>{cue.name}</strong>
+                    <label>시작<input type="number" min="0" max={duration} step="0.1" value={cue.startSecond} onChange={(event: ChangeEvent<HTMLInputElement>) => updateSfxCue(cue.id, { startSecond: Number(event.target.value) })} /></label>
+                    <label>길이<input type="number" min="0.1" max="10" step="0.1" value={cue.durationSeconds} onChange={(event: ChangeEvent<HTMLInputElement>) => updateSfxCue(cue.id, { durationSeconds: Number(event.target.value) })} /></label>
+                    <label>볼륨<input type="range" min="0" max="1.5" step="0.05" value={cue.volume} onChange={(event: ChangeEvent<HTMLInputElement>) => updateSfxCue(cue.id, { volume: Number(event.target.value) })} /></label>
+                    <audio controls preload="none" src={cue.url} />
+                    <button type="button" onClick={() => setSfxCues((current) => current.filter((item) => item.id !== cue.id))}>삭제</button>
+                  </article>
+                ))}
+                {!sfxCues.length && <p className={styles.helper}>효과음을 업로드한 뒤 소재 버튼을 눌러 타임라인에 배치하세요.</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.phaseActions}>
+            <button className={styles.subtle} type="button" onClick={() => void saveAudioTimeline()} disabled={Boolean(busy) || !projectId}>{busy === "audio-save" ? "저장 중..." : "타임라인만 저장"}</button>
+            <button className={styles.primary} type="button" onClick={() => void generateVoice()} disabled={Boolean(busy) || !projectId || !voiceSegments.length}>{busy === "voice" ? "문장별 음성 생성 중..." : "전체 문장 음성 생성·오디오 확정"}</button>
+          </div>
+          <p className={styles.helper}>문장별 음성은 각각 다시 생성할 수 있으며, 배경음악은 음성 구간에서 자동으로 낮아지고 효과음은 지정한 초에 최종 MP4로 합성됩니다.</p>
+        </section>
+      );
+    }
+
+    if (activeStep === "thumbnail") {
+      const variants = thumbnailVariants.length ? thumbnailVariants : buildThumbnailVariants({
+        styleProfile: thumbnailStyleProfile,
+        fontPreset: thumbnailFontPreset,
+        mainText: thumbnailMainText,
+        subText: thumbnailSubText,
+        badgeText: thumbnailBadgeText,
+        productName,
+        factoryResult,
+      });
+      const recommendedFonts: Array<{ id: ThumbnailFontPreset; label: string; note: string }> = [
+        { id: "gmarket-bold", label: "지마켓산스 Bold", note: "기본 쇼핑형 · 생활꿀템" },
+        { id: "cafe24-surround-air", label: "카페24 써라운드 에어", note: "친근한 생활 리뷰형" },
+        { id: "one-mobile-pop", label: "원스토어 모바일POP체", note: "할인·강조형" },
+        { id: "one-mobile-title", label: "원스토어 모바일고딕 제목체", note: "가전·IT 정보형" },
+        { id: "esamanru-bold", label: "이사만루 Bold", note: "강한 주목형" },
+        { id: "nanum-round", label: "나눔스퀘어라운드 Bold", note: "부드러운 후기형" },
+      ];
+      return (
+        <section className={styles.stageCard}>
+          <div className={styles.stageHeading}><div><span>STEP 08</span><h2>썸네일 캔버스·미리캔버스 글씨체</h2></div><strong>{variants.length}개 시안</strong></div>
+          <div className={styles.fontSystemNotice}>
+            <div><b>사이트 기본 글씨체</b><span>Pretendard Variable</span></div>
+            <div><b>미리캔버스 글씨체</b><span>지원되는 인기 한글 폰트만 사용</span></div>
+            <div><b>작업 방식</b><span>시안 생성 → 패키지 저장 → 미리캔버스로 마무리</span></div>
+          </div>
+
+          <div className={styles.thumbnailControls}>
+            <label>썸네일 스타일<select value={thumbnailStyleProfile} onChange={(event: ChangeEvent<HTMLSelectElement>) => { const next = event.target.value as ThumbnailStyleProfile; setThumbnailStyleProfile(next); setThumbnailFontPreset(defaultFontForStyle(next)); }}>
+              <option value="lifehack">생활 꿀템형</option>
+              <option value="deal">할인 강조형</option>
+              <option value="it-info">가전·IT 정보형</option>
+              <option value="review">감성 후기형</option>
+            </select></label>
+            <label>메인 글씨체<select value={thumbnailFontPreset} onChange={(event: ChangeEvent<HTMLSelectElement>) => setThumbnailFontPreset(event.target.value as ThumbnailFontPreset)}>{recommendedFonts.map((font) => <option key={font.id} value={font.id}>{font.label}</option>)}</select></label>
+            <label>타이틀 카드·자막 프리셋<select value={subtitleFontPreset} onChange={(event: ChangeEvent<HTMLSelectElement>) => setSubtitleFontPreset(event.target.value as ThumbnailFontPreset)}>{recommendedFonts.map((font) => <option key={font.id} value={font.id}>{font.label}</option>)}</select></label>
+          </div>
+
+          <div className={styles.fontPresetGrid}>
+            {recommendedFonts.map((font) => (
+              <button type="button" key={font.id} className={thumbnailFontPreset === font.id ? styles.selectedPreset : styles.fontPresetCard} onClick={() => setThumbnailFontPreset(font.id)}>
+                <b>{font.label}</b>
+                <span>{font.note}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className={styles.thumbnailEditor}>
+            <label>메인 문구<textarea rows={2} value={thumbnailMainText} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setThumbnailMainText(event.target.value)} placeholder="예: 이거 없이 여름 어떻게 버텼지?" /></label>
+            <label>보조 문구<textarea rows={2} value={thumbnailSubText} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setThumbnailSubText(event.target.value)} placeholder="예: 3초 강풍 · 출퇴근 필수템" /></label>
+            <label>배지 문구<input value={thumbnailBadgeText} onChange={(event: ChangeEvent<HTMLInputElement>) => setThumbnailBadgeText(event.target.value)} placeholder="예: 지금 확인" /></label>
+          </div>
+
+          <div className={styles.thumbnailPreviewGrid}>
+            {variants.map((variant) => (
+              <article key={variant.id} className={styles.thumbnailCard}>
+                <div className={`${styles.thumbnailVisual} ${variant.canvas === "1280x720" ? styles.wideCanvas : styles.verticalCanvas}`}>
+                  <div className={styles.thumbnailBadge}>{variant.badge}</div>
+                  <div className={styles.thumbnailTextStack}>
+                    <strong>{variant.title}</strong>
+                    <span>{variant.subtitle}</span>
+                    <small>{MIRICANVAS_FONT_LABELS[variant.fontPreset]} · {variant.accent}</small>
+                  </div>
+                  <div className={styles.productMock}>상품·인물 영역</div>
+                </div>
+                <div className={styles.thumbnailMeta}>
+                  <b>{variant.canvas}</b>
+                  <span>{variant.layout}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className={styles.miricanvasChecklist}>
+            <h3>미리캔버스 작업 패키지</h3>
+            <ul>
+              <li>메인 글씨체: {MIRICANVAS_FONT_LABELS[thumbnailFontPreset]}</li>
+              <li>타이틀 카드·자막 프리셋: {MIRICANVAS_FONT_LABELS[subtitleFontPreset]}</li>
+              <li>세로 쇼츠 커버 1080×1920 / 유튜브 썸네일 1280×720</li>
+              <li>상품 이미지는 오른쪽, 메인 문구는 최대 2줄 권장</li>
+            </ul>
+          </div>
+
+          <div className={styles.phaseActions}>
+            <button className={styles.subtle} type="button" onClick={regenerateThumbnailVariants}>시안 다시 만들기</button>
+            <button className={styles.subtle} type="button" onClick={downloadThumbnailPackage}>미리캔버스 패키지 다운로드</button>
+          </div>
+          <div className={styles.phaseActions}>
+            <button className={styles.subtle} type="button" onClick={openMiricanvas}>미리캔버스 열기</button>
+            <button className={styles.primary} type="button" onClick={() => void saveThumbnailPackage()} disabled={Boolean(busy) || !projectId}>{busy === "thumbnail-save" ? "저장 중..." : "썸네일·글씨체 패키지 저장"}</button>
+          </div>
+          <p className={styles.helper}>실제 최종 썸네일은 미리캔버스에서 마무리하고, GY-NEXUS는 문구·폰트·레이아웃·규격이 정리된 작업 패키지를 제공합니다.</p>
+        </section>
+      );
+    }
+
+    if (activeStep === "render") {
+      return (
+        <section className={styles.stageCard}>
+          <div className={styles.stageHeading}><div><span>STEP 09</span><h2>선별 장면·최종 MP4</h2></div><strong>{finalVideoUrl ? "완성" : "제작 전"}</strong></div>
+          <div className={styles.engineFlow}>
+            <span>상품 사진</span><i>→</i><span>AI 장면</span><i>→</i><span>Runway 영상</span><i>→</i><span>음성·자막·음악</span><i>→</i><span>9:16 MP4</span>
+          </div>
+          <div className={styles.phaseActions}>
+            <button className={styles.subtle} type="button" onClick={() => void downloadCapCutPackage()} disabled={Boolean(busy) || !projectId}>
+              {busy === "capcut" ? "CapCut 패키지 생성 중..." : "CapCut 가져오기 ZIP"}
+            </button>
+            <button className={styles.primary} type="button" onClick={() => void renderVideo()} disabled={Boolean(busy) || !projectId}>
+              {busy === "render" ? "영상 제작·합성 중..." : "Runway·최종 MP4 제작"}
+            </button>
+          </div>
+          {finalVideoUrl && (
+            <div className={styles.videoResult}>
+              <video controls playsInline src={finalVideoUrl} />
+              <a href={finalVideoUrl} target="_blank" rel="noreferrer">완성 MP4 열기</a>
+            </div>
+          )}
+        </section>
+      );
+    }
+
+    return (
+      <section className={styles.stageCard}>
+        <div className={styles.stageHeading}><div><span>STEP 10</span><h2>검수·비공개 게시</h2></div><strong>{publishQueued ? "대기열 등록" : "대표 승인 필요"}</strong></div>
+        {finalVideoUrl ? <video className={styles.publishVideo} controls playsInline src={finalVideoUrl} /> : <p className={styles.helper}>최종 MP4가 완성되면 이 화면에서 확인할 수 있습니다.</p>}
+        <div className={styles.publishChecklist}>
+          <span>첫 2초 훅</span><span>상품 형태</span><span>한국어 자막</span><span>음성·음악 밸런스</span><span>제휴 고지</span><span>썸네일</span>
+        </div>
+        <button className={styles.primary} type="button" onClick={() => void queuePrivateYouTube()} disabled={Boolean(busy) || !finalVideoUrl || publishQueued}>
+          {publishQueued ? "YouTube 비공개 대기열 등록 완료" : busy === "publish" ? "게시 대기열 등록 중..." : "YouTube 비공개 게시 대기열 등록"}
+        </button>
+
+        <div className={styles.learningEnginePanel}>
+          <div className={styles.learningHead}>
+            <div><span>PHASE 5</span><h3>게시 성과·클릭·판매 학습 엔진</h3></div>
+            <strong>{learningData.lastUpdatedAt ? "학습 데이터 있음" : "학습 전"}</strong>
+          </div>
+          <div className={styles.learningSummaryGrid}>
+            <article><span>조회수</span><strong>{learningData.views.toLocaleString("ko-KR")}</strong></article>
+            <article><span>클릭</span><strong>{learningData.clicks.toLocaleString("ko-KR")}</strong></article>
+            <article><span>주문</span><strong>{learningData.orders.toLocaleString("ko-KR")}</strong></article>
+            <article><span>매출</span><strong>{learningData.revenue.toLocaleString("ko-KR")}원</strong></article>
+          </div>
+
+          <div className={styles.learningFormGrid}>
+            <label>채널<select value={learningData.sourceChannel} onChange={(event: ChangeEvent<HTMLSelectElement>) => updateLearningField("sourceChannel", event.target.value as LearningEngineData["sourceChannel"])}><option value="youtube">YouTube</option><option value="instagram">Instagram</option><option value="manual">수동 입력</option></select></label>
+            <label>게시일<input type="datetime-local" value={learningData.publishedAt ? new Date(learningData.publishedAt).toISOString().slice(0, 16) : ""} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("publishedAt", event.target.value ? new Date(event.target.value).toISOString() : "")} /></label>
+            <label>훅 스타일<input value={learningData.hookStyle} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("hookStyle", event.target.value)} /></label>
+            <label>썸네일 스타일<input value={learningData.thumbnailStyle} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("thumbnailStyle", event.target.value)} /></label>
+            <label>조회수<input type="number" min="0" value={learningData.views} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("views", Number(event.target.value))} /></label>
+            <label>노출수<input type="number" min="0" value={learningData.impressions} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("impressions", Number(event.target.value))} /></label>
+            <label>CTR(%)<input type="number" min="0" step="0.1" value={learningData.ctr} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("ctr", Number(event.target.value))} /></label>
+            <label>평균 시청률(%)<input type="number" min="0" step="0.1" value={learningData.averageViewPercent} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("averageViewPercent", Number(event.target.value))} /></label>
+            <label>링크 클릭<input type="number" min="0" value={learningData.clicks} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("clicks", Number(event.target.value))} /></label>
+            <label>주문수<input type="number" min="0" value={learningData.orders} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("orders", Number(event.target.value))} /></label>
+            <label>매출(원)<input type="number" min="0" value={learningData.revenue} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("revenue", Number(event.target.value))} /></label>
+            <label>광고·제작 비용(원)<input type="number" min="0" value={learningData.spend} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("spend", Number(event.target.value))} /></label>
+            <label>저장률(%)<input type="number" min="0" step="0.1" value={learningData.saveRate} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("saveRate", Number(event.target.value))} /></label>
+            <label>공유율(%)<input type="number" min="0" step="0.1" value={learningData.shareRate} onChange={(event: ChangeEvent<HTMLInputElement>) => updateLearningField("shareRate", Number(event.target.value))} /></label>
+          </div>
+
+          <div className={styles.insightList}>
+            {hydrateLearningData(learningData).insights.map((item, index) => (
+              <article key={`${item.area}-${index}`}>
+                <b>{item.area}</b>
+                <strong>{item.summary}</strong>
+                <p>{item.action}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className={styles.phaseActions}>
+            <button className={styles.subtle} type="button" onClick={downloadLearningReport}>학습 리포트 다운로드</button>
+            <button className={styles.primary} type="button" onClick={() => void saveLearningEngine()} disabled={Boolean(busy) || !projectId}>{busy === "learning-save" ? "저장 중..." : "학습 엔진 저장"}</button>
+          </div>
+        </div>
+
+        <div className={styles.internalLinks}>
+          <Link href="/admin/publishing">게시센터 확인</Link>
+          <Link href="/admin/analytics">조회수·클릭 분석</Link>
+          <Link href="/admin/content-factory">같은 상품으로 블로그 만들기</Link>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <main className={styles.shell}>
+      <header className={styles.hero}>
+        <div>
+          <span>DREAM Y · KOREAN SHORTS · PHASE 5</span>
+          <h1>한국형 쇼츠 제작</h1>
+          <p>상품 하나를 기준으로 대본·사진·내 영상 Gemini 선별·음성·음악·미리캔버스 썸네일·최종 MP4·게시 성과 학습까지 한 프로젝트 안에서 이어서 제작합니다.</p>
+        </div>
+        <div className={styles.heroSide}>
+          <div className={styles.progressRing}><strong>{progressPercent}%</strong><span>{completedCount}/{steps.length} 완료</span></div>
+          <button type="button" className={styles.autoButton} onClick={() => void runAutomatic()} disabled={Boolean(busy)}>
+            {busy === "auto" ? "Dream Y 자동 제작 중..." : "AI 제작 자동 실행"}
+          </button>
+        </div>
+      </header>
+
+      <section className={styles.modeBar}>
+        <div>
+          <b>제작 모드</b>
+          <span>AI 제작은 자동화하고 미리캔버스·CapCut 최종 확인은 대표가 진행합니다.</span>
+        </div>
+        <div className={styles.modeButtons}>
+          <button className={mode === "manual" ? styles.activeMode : ""} onClick={() => setMode("manual")}>수동</button>
+          <button className={mode === "guided" ? styles.activeMode : ""} onClick={() => setMode("guided")}>반자동</button>
+          <button className={mode === "auto" ? styles.activeMode : ""} onClick={() => setMode("auto")}>AI 자동</button>
+        </div>
+      </section>
+
+      {(message || error) && (
+        <div className={error ? styles.error : styles.notice}>
+          <b>{error ? "확인 필요" : "진행 상태"}</b>
+          <span>{error || message}</span>
+        </div>
+      )}
+
+      <section className={styles.workspace}>
+        <nav className={styles.stepRail} aria-label="쇼핑 쇼츠 제작 단계">
+          {steps.map((step) => (
+            <button
+              type="button"
+              key={step.key}
+              className={`${styles.stepButton} ${activeStep === step.key ? styles.activeStep : ""} ${styles[step.state]}`}
+              onClick={() => moveTo(step.key)}
+            >
+              <span>{step.number}</span>
+              <div><b>{step.label}</b><small>{step.detail || step.description}</small></div>
+              <i>{step.state === "done" ? "✓" : step.state === "running" ? "…" : step.state === "error" ? "!" : "›"}</i>
+            </button>
+          ))}
+        </nav>
+
+        <div className={styles.canvas}>
+          <div className={styles.canvasTop}>
+            <div>
+              <small>{currentStep.number} · {currentStep.label}</small>
+              <strong>{productName || "새 쇼핑 쇼츠 프로젝트"}</strong>
+            </div>
+            <span>{mode === "manual" ? "대표 직접 제어" : mode === "guided" ? "Dream Y 단계별 제작" : "Dream Y AI 자동 제작"}</span>
+          </div>
+          {renderStepContent()}
+        </div>
+
+        <aside className={styles.advisor}>
+          <span>DREAM Y · COMPANY ARCHITECT</span>
+          <h2>다음 판단</h2>
+          <p>{advisorText}</p>
+          <div className={styles.engineStatus}>
+            <div><b>Dream Y</b><span>대본·판매 구조</span></div>
+            <div><b>Gemini</b><span>내 영상 분석·좋은 구간 선별</span></div>
+            <div><b>OpenAI</b><span>이미지·음성·품질검수</span></div>
+            <div><b>Runway</b><span>장면 영상 생성</span></div>
+            <div><b>MiriCanvas</b><span>썸네일 마무리 패키지</span></div>
+            <div><b>Video Worker</b><span>음성·자막·MP4 합성</span></div>
+            <div><b>YouTube</b><span>비공개 게시 대기</span></div>
+            <div><b>Learning Engine</b><span>조회·클릭·판매 학습</span></div>
+          </div>
+          {factoryResult && (
+            <div className={styles.miniSummary}>
+              <small>현재 훅</small>
+              <strong>{factoryResult.shorts.hook}</strong>
+              <small>SEO</small>
+              <p>{factoryResult.seo.primaryKeyword}</p>
+              <small>학습 메모</small>
+              <p>{learningData.insights[0]?.summary || "성과 데이터가 쌓이면 다음 훅과 썸네일 방향을 자동 추천합니다."}</p>
+            </div>
+          )}
+        </aside>
+      </section>
+    </main>
+  );
+}
+"use client";
+
+import Link from "next/link";
+import { createClient } from "@supabase/supabase-js";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import type { ContentFactoryPackage } from "@/lib/content-factory/types";
+import styles from "./ShortsProductionHub.module.css";
+
+type Mode = "manual" | "guided" | "auto";
+type SourceStrategy = "korean-original" | "china-reference" | "single-photo";
+type SceneGenerationMode = "fast" | "balanced" | "quality";
+type VoicePreset = "marin" | "coral" | "shimmer" | "cedar" | "onyx" | "echo";
+type StepKey = "product" | "strategy" | "assets" | "project" | "analysis" | "scenes" | "voice" | "thumbnail" | "render" | "publish";
+type StepState = "waiting" | "running" | "done" | "error";
+
+type CanvasStep = {
+  key: StepKey;
+  number: string;
+  label: string;
+  description: string;
+  state: StepState;
+  detail: string;
+};
+
+type ImportedProduct = {
+  name: string;
+  description: string;
+  imageUrl: string;
+  priceText: string;
+  platform: string;
+  finalUrl: string;
+  warning?: string;
+};
+
+const INVALID_PRODUCT_NAME = /^(access denied|forbidden|request blocked|요청이 차단|접근이 거부|접근 거부|robot check|captcha|보안 확인)/i;
+
+type TrendKeyword = {
+  keyword: string;
+  traffic: number;
+  shopping_fit: number;
+  rank: number;
+};
+
+type CommercePackage = {
+  productCode?: string;
+  title?: string;
+  description?: string;
+  disclosure?: string;
+  cta?: string;
+  platformVersions?: {
+    youtube?: {
+      title?: string;
+      description?: string;
+      hashtags?: string[];
+    };
+  };
+};
+
+
+type VoiceSegment = {
+  id: string;
+  startSecond: number;
+  endSecond: number;
+  text: string;
+  voice: VoicePreset;
+  speed: number;
+  volume: number;
+  delivery: string;
+  audioUrl?: string;
+  updatedAt?: string;
+};
+
+type AudioAsset = {
+  id: string;
+  kind: "music" | "sfx";
+  name: string;
+  url: string;
+  mimeType?: string;
+  sizeBytes?: number;
+};
+
+type MusicTrack = {
+  assetId: string;
+  name: string;
+  url: string;
+  volume: number;
+  startSecond: number;
+  fadeIn: number;
+  fadeOut: number;
+  loop: boolean;
+  autoDuck: boolean;
+  licenseNote: string;
+};
+
+type SfxCue = {
+  id: string;
+  assetId: string;
+  name: string;
+  url: string;
+  startSecond: number;
+  durationSeconds: number;
+  volume: number;
+};
+
+type AudioTimeline = {
+  voiceMasterVolume?: number;
+  voiceSegments?: VoiceSegment[];
+  music?: MusicTrack;
+  sfxCues?: SfxCue[];
+};
+
+
+type ThumbnailFontPreset = "gmarket-bold" | "nanum-round" | "cafe24-surround-air" | "one-mobile-pop" | "one-mobile-title" | "esamanru-bold";
+type ThumbnailStyleProfile = "lifehack" | "deal" | "it-info" | "review";
+
+type ThumbnailVariant = {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  fontPreset: ThumbnailFontPreset;
+  layout: string;
+  canvas: "1080x1920" | "1280x720";
+  accent: string;
+};
+
+type ThumbnailPackage = {
+  styleProfile: ThumbnailStyleProfile;
+  fontPreset: ThumbnailFontPreset;
+  subtitlePreset: ThumbnailFontPreset;
+  mainText: string;
+  subText: string;
+  badgeText: string;
+  variants: ThumbnailVariant[];
+  miricanvasGuide: string[];
+  updatedAt: string;
+};
+
+
+type GeminiSelectedCut = {
+  order: number;
+  frameIndex: number;
+  sourceStartSecond: number;
+  sourceEndSecond: number;
+  durationSeconds: number;
+  score: number;
+  role: string;
+  reason: string;
+  subtitleSuggestion: string;
+};
+
+type GeminiMediaAnalysis = {
+  summary: string;
+  productMatchScore: number;
+  visualQualityScore: number;
+  bestHookTimestamp: number;
+  recommendedCuts: GeminiSelectedCut[];
+  rejectedMoments: string[];
+  warnings: string[];
+  model: string;
+  analyzedAt: string;
+};
+
+type MediaAnalysisAsset = {
+  id: string;
+  name: string;
+  url: string;
+  path?: string;
+  mimeType: string;
+  sizeBytes: number;
+  rightsStatus: "owned";
+  status: "uploaded" | "queued" | "extracting" | "analyzing" | "completed" | "failed";
+  frameUrls: string[];
+  frameTimestamps: number[];
+  durationSeconds: number | null;
+  analysis?: GeminiMediaAnalysis;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type LearningInsight = {
+  area: "hook" | "thumbnail" | "voice" | "offer" | "timing";
+  summary: string;
+  action: string;
+};
+
+type LearningEngineData = {
+  sourceChannel: "youtube" | "instagram" | "manual";
+  views: number;
+  impressions: number;
+  ctr: number;
+  averageViewPercent: number;
+  clicks: number;
+  orders: number;
+  revenue: number;
+  spend: number;
+  saveRate: number;
+  shareRate: number;
+  hookStyle: string;
+  thumbnailStyle: string;
+  publishedAt?: string;
+  lastUpdatedAt?: string;
+  insights: LearningInsight[];
+};
+
+type ProjectRecord = {
+  id: string;
+  title: string;
+  product_name: string;
+  product_description?: string;
+  final_video_url?: string | null;
+  settings?: {
+    commercePackage?: CommercePackage;
+    audioTimeline?: AudioTimeline;
+    audioAssets?: AudioAsset[];
+    voiceAudioUrl?: string | null;
+    mediaAnalysisAssets?: MediaAnalysisAsset[];
+    geminiSelectedAssetId?: string;
+    thumbnailPackage?: ThumbnailPackage;
+    learningEngine?: LearningEngineData;
+  } | null;
+};
+
+type ProjectScene = {
+  id?: string;
+  scene_number?: number;
+  start_second?: number;
+  end_second?: number;
+  role?: string;
+  narration?: string;
+  subtitle_text?: string;
+  status?: string;
+  quality_status?: string;
+  selected_image_url?: string | null;
+  selected_video_url?: string | null;
+};
+
+type ProjectResponse = {
+  success?: boolean;
+  message?: string;
+  project?: ProjectRecord;
+  scenes?: ProjectScene[];
+  renderJob?: {
+    status?: string;
+    error_message?: string;
+  } | null;
+};
+
 type BackgroundSceneJob = {
   jobId: string;
   projectId: string;
