@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
+    "app/api/shopping-shorts/runs/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/queues/scene-master/route.ts": {
       "maxDuration": 300,
       "experimentalTriggers": [

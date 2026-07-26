@@ -11,6 +11,7 @@ type Group = { ko: string; en: string; items: Item[] };
 
 const navigationGroups: Group[] = [
   { ko: "쇼츠 제작", en: "SHORTS PRODUCTION", items: [
+    { icon: "sparkles", ko: "자동 쇼핑 쇼츠", en: "Auto Shopping Shorts", href: "/admin/auto-shopping-shorts" },
     { icon: "play", ko: "쇼츠 제작센터", en: "Shorts Production Hub", href: "/admin/shorts-hub" },
     { icon: "sparkles", ko: "한국형 쇼츠", en: "Korean Shorts", href: "/admin/korean-shorts" },
     { icon: "search", ko: "중국 소스 현지화", en: "China Source Localization", href: "/admin/china-video-lab" },

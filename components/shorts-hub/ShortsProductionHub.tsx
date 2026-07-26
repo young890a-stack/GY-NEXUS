@@ -247,6 +247,19 @@ type ProjectResponse = {
   } | null;
 };
 
+export type ShortsProductionDraft = {
+  runId: string;
+  variantId: string;
+  productName: string;
+  productDescription: string;
+  productUrl: string;
+  productImageUrl: string;
+  priceText: string;
+  duration: 15 | 20 | 30;
+  hookStyle: string;
+  factoryResult: ContentFactoryPackage;
+};
+
 type BackgroundSceneJob = {
   jobId: string;
   projectId: string;
@@ -348,25 +361,29 @@ function sleep(ms: number) {
 export default function ShortsProductionHub({
   initialMode = "guided",
   initialAffiliateUrl = "",
+  initialDraft,
+  initialAutoStart = false,
 }: {
   initialMode?: Mode;
   initialAffiliateUrl?: string;
+  initialDraft?: ShortsProductionDraft;
+  initialAutoStart?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [sourceStrategy, setSourceStrategy] = useState<SourceStrategy>("korean-original");
   const [activeStep, setActiveStep] = useState<StepKey>("product");
   const [steps, setSteps] = useState<CanvasStep[]>(initialSteps);
 
-  const [affiliateUrl, setAffiliateUrl] = useState(initialAffiliateUrl);
-  const [productName, setProductName] = useState("");
-  const [description, setDescription] = useState("");
-  const [productImageUrl, setProductImageUrl] = useState("");
-  const [priceText, setPriceText] = useState("");
+  const [affiliateUrl, setAffiliateUrl] = useState(initialDraft?.productUrl || initialAffiliateUrl);
+  const [productName, setProductName] = useState(initialDraft?.productName || "");
+  const [description, setDescription] = useState(initialDraft?.productDescription || "");
+  const [productImageUrl, setProductImageUrl] = useState(initialDraft?.productImageUrl || "");
+  const [priceText, setPriceText] = useState(initialDraft?.priceText || "");
   const [platform, setPlatform] = useState("");
   const [trendKeywords, setTrendKeywords] = useState<TrendKeyword[]>([]);
   const [selectedTrendKeywords, setSelectedTrendKeywords] = useState<string[]>([]);
 
-  const [duration, setDuration] = useState<15 | 20 | 25 | 30>(20);
+  const [duration, setDuration] = useState<15 | 20 | 25 | 30>(initialDraft?.duration || 20);
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.2 | 1.4>(1);
   const [sceneGenerationMode, setSceneGenerationMode] = useState<SceneGenerationMode>("quality");
   const [tone, setTone] = useState("친근하고 재미있는 생활 밀착형");
@@ -376,9 +393,9 @@ export default function ShortsProductionHub({
   const [sfxMode, setSfxMode] = useState<"recommended" | "minimal" | "none">("recommended");
 
   const [imageFiles, setImageFiles] = useState<File[]>([]);
-  const [referenceImageUrls, setReferenceImageUrls] = useState<string[]>([]);
-  const [factoryResult, setFactoryResult] = useState<ContentFactoryPackage | null>(null);
-  const [draftVoiceover, setDraftVoiceover] = useState("");
+  const [referenceImageUrls, setReferenceImageUrls] = useState<string[]>(initialDraft?.productImageUrl ? [initialDraft.productImageUrl] : []);
+  const [factoryResult, setFactoryResult] = useState<ContentFactoryPackage | null>(initialDraft?.factoryResult || null);
+  const [draftVoiceover, setDraftVoiceover] = useState(initialDraft?.factoryResult.shorts.voiceover || "");
   const [voiceSegments, setVoiceSegments] = useState<VoiceSegment[]>([]);
   const [voiceMasterVolume, setVoiceMasterVolume] = useState(1);
   const [audioAssets, setAudioAssets] = useState<AudioAsset[]>([]);
@@ -1738,7 +1755,7 @@ ${commerce.cta || "상품 링크에서 자세히 확인하세요."}`.trim(),
     }
   }
 
-  async function runAutomatic() {
+  async function runAutomatic(options?: { skipConfirm?: boolean }) {
     if (busy) return;
     if (!productName.trim()) {
       setError("제휴링크에서 상품을 불러오거나 상품명을 먼저 입력해주세요.");
@@ -1746,7 +1763,7 @@ ${commerce.cta || "상품 링크에서 자세히 확인하세요."}`.trim(),
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = options?.skipConfirm || window.confirm(
       `${productName}
 
 대본·이미지·Gemini 내 영상 선별·음성·최종 MP4까지 자동 제작할까요?
@@ -1764,6 +1781,13 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       const created = projectId
         ? { id: projectId, sceneCount: Math.max(1, projectScenes.length || Math.ceil(duration / 5)) }
         : await createProjectCore(result, references);
+      if (initialDraft) {
+        await jsonRequest(`/api/shopping-shorts/runs/${initialDraft.runId}/variants/${initialDraft.variantId}/production`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ videoProjectId: created.id, status: "producing" }),
+        });
+      }
 
       if (videoFile && mediaRightsConfirmed) await analyzeOwnedVideoCore(created.id, videoFile);
       else { markStep("analysis", "done", "내 영상 없음 · AI 장면 제작"); }
@@ -1773,6 +1797,18 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       regenerateThumbnailVariants();
       await saveThumbnailPackage();
       await renderCore(created.id, created.sceneCount);
+      if (initialDraft) {
+        const completed = await jsonRequest<ProjectResponse>(`/api/creative-studio-pro/projects/${created.id}`, { cache: "no-store" });
+        await jsonRequest(`/api/shopping-shorts/runs/${initialDraft.runId}/variants/${initialDraft.variantId}/production`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            videoProjectId: created.id,
+            status: completed.project?.final_video_url ? "rendered" : "producing",
+            finalVideoUrl: completed.project?.final_video_url || "",
+          }),
+        });
+      }
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : "완전자동 제작이 중단됐습니다.";
       setError(reason);
@@ -1783,6 +1819,17 @@ AI 사용량이 발생할 수 있으며 공개 게시 전에는 대표님 승인
       setBusy("");
     }
   }
+
+  useEffect(() => {
+    if (!initialAutoStart || !initialDraft) return;
+    const timer = window.setTimeout(() => {
+      if (busy) return;
+      void runAutomatic({ skipConfirm: true });
+    }, 700);
+    return () => window.clearTimeout(timer);
+    // The draft is immutable for a mounted production page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAutoStart, initialDraft]);
 
   function downloadProductionPackage() {
     if (!factoryResult) {
